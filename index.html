@@ -1,0 +1,1378 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="本を読んで感じたことを、いっしょに言葉にしよう。AIと対話しながら、自分の言葉で読書感想文を書くための学習支援ツール（プロトタイプ）。">
+<meta name="theme-color" content="#FFF8EA">
+<meta property="og:title" content="ことばのしおり">
+<meta property="og:description" content="本を読んで感じたことを、いっしょに言葉にしよう">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M13 6a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v38l-11-7-11 7z' fill='%2316807A'/%3E%3Ccircle cx='19.5' cy='17' r='2.3' fill='%23fff'/%3E%3Ccircle cx='28.5' cy='17' r='2.3' fill='%23fff'/%3E%3Cpath d='M20 23.5q4 3.6 8 0' stroke='%23fff' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>ことばのしおり</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+img{max-width:100%}
+/* Layout: one calm centered column of soft cards on cream; the writing screen splits into a memo rail (left) and a writing desk (right). */
+:root{
+  --bg:#FFF8EA;
+  --surface:#FFFFFF;
+  --surface-2:#FCF1DA;
+  --line:#EADFC6;
+  --ink:#233434;
+  --ink-2:#536667;
+  --teal:#16807A;
+  --teal-ink:#0E5F5B;
+  --teal-soft:#DCF0EC;
+  --on-teal:#FFFFFF;
+  --accent:#F4B63E;
+  --accent-soft:#FFEDC6;
+  --on-accent:#3B2A00;
+  --orange:#B4611F;
+  --note-bg:#FFF1D8;
+  --note-ink:#86480E;
+  --shadow:0 2px 0 rgba(120,96,40,.06),0 8px 24px rgba(120,96,40,.08);
+  --font-display:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic",sans-serif;
+  --font-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --font-hand:var(--font-display);
+  --r-lg:24px; --r-md:18px; --r-sm:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#13201F; --surface:#1B2C2C; --surface-2:#223535; --line:#2F4645;
+    --ink:#EDF2EC; --ink-2:#AFC1BE; --teal:#5BC4BA; --teal-ink:#93DED5; --teal-soft:#1D3D3B;
+    --on-teal:#0C1B1A; --accent:#F2C14E; --accent-soft:#3A321C; --on-accent:#2A1E00;
+    --orange:#F0A869; --note-bg:#382C18; --note-ink:#F6CF95;
+    --shadow:0 2px 0 rgba(0,0,0,.2),0 8px 24px rgba(0,0,0,.25);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#13201F; --surface:#1B2C2C; --surface-2:#223535; --line:#2F4645;
+  --ink:#EDF2EC; --ink-2:#AFC1BE; --teal:#5BC4BA; --teal-ink:#93DED5; --teal-soft:#1D3D3B;
+  --on-teal:#0C1B1A; --accent:#F2C14E; --accent-soft:#3A321C; --on-accent:#2A1E00;
+  --orange:#F0A869; --note-bg:#382C18; --note-ink:#F6CF95;
+  --shadow:0 2px 0 rgba(0,0,0,.2),0 8px 24px rgba(0,0,0,.25);
+  color-scheme:dark;
+}
+
+html{font-size:112.5%;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:1rem;line-height:1.85;letter-spacing:.02em}
+*,*::before,*::after{box-sizing:border-box}
+h1,h2,h3{font-family:var(--font-display);font-weight:700;line-height:1.45;margin:0;text-wrap:balance}
+p{margin:0}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:10px}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:12px;min-height:64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-weight:700;color:var(--teal-ink);font-size:1.05rem;background:none;border:0;padding:4px;cursor:pointer;white-space:nowrap}
+.brand svg{width:28px;height:28px}
+.flow{flex:1;display:flex;justify-content:center;gap:4px;list-style:none;margin:0;padding:0;min-width:0}
+.flow li{font-size:.78rem;padding:4px 12px;border-radius:999px;color:var(--ink-2);white-space:nowrap;display:flex;align-items:center;gap:6px}
+.flow li .dot{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.flow li.done .dot{background:var(--teal)}
+.flow li.now{background:var(--teal-soft);color:var(--teal-ink);font-weight:700}
+.flow li.now .dot{background:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
+.flow-mini{display:none;flex:1;font-size:.85rem;color:var(--ink-2);text-align:center}
+.flow-mini b{color:var(--teal-ink)}
+.top-actions{display:flex;gap:8px}
+.top-actions .btn{min-height:44px;font-size:.85rem;padding:0 14px}
+@media (max-width:860px){.flow{display:none}.flow-mini{display:block}}
+@media (max-width:520px){.brand span{display:none}.top-actions .btn{padding:0 10px}.flow-mini{font-size:.75rem;white-space:nowrap;line-height:1.3}.flow-mini .stp{display:none}.face label{font-size:.68rem;white-space:nowrap;padding:6px 0}.face svg{width:38px;height:38px}}
+
+/* ---------- common ---------- */
+.wrap{max-width:980px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 140px}
+.wrap.wide{max-width:1120px}
+.stack{display:flex;flex-direction:column;gap:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:24px}
+.eyebrow{font-family:var(--font-display);font-size:.8rem;letter-spacing:.12em;color:var(--teal-ink);font-weight:700}
+.lead{color:var(--ink-2);max-width:40em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5em;min-height:52px;padding:0 1.5em;border-radius:999px;font-family:var(--font-display);font-weight:700;font-size:1rem;border:2px solid transparent;cursor:pointer;transition:transform .15s,background-color .15s,box-shadow .15s;text-decoration:none;line-height:1.3}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--teal);color:var(--on-teal);box-shadow:0 3px 0 var(--teal-ink)}
+.btn-primary:hover:not([disabled]){filter:brightness(1.06)}
+.btn-accent{background:var(--accent);color:var(--on-accent);box-shadow:0 3px 0 color-mix(in srgb,var(--accent) 60%,#7a5200)}
+.btn-ghost{background:var(--surface);border-color:var(--line);color:var(--teal-ink)}
+.btn-ghost:hover:not([disabled]){border-color:var(--teal)}
+.btn-soft{background:var(--teal-soft);color:var(--teal-ink)}
+.btn-quiet{background:transparent;color:var(--ink-2);border-color:transparent;text-decoration:underline;text-underline-offset:4px;padding:0 .8em}
+.btn-sm{min-height:44px;font-size:.88rem;padding:0 1.1em}
+.btn-lg{min-height:60px;font-size:1.1rem;padding:0 2em}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.row.end{justify-content:flex-end}
+.row.between{justify-content:space-between}
+.tag{display:inline-block;font-size:.72rem;padding:1px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);font-weight:700;vertical-align:middle;margin-left:6px}
+.note{display:flex;gap:10px;align-items:flex-start;background:var(--note-bg);color:var(--note-ink);border-radius:var(--r-sm);padding:10px 14px;font-size:.88rem}
+.note svg{flex:none;width:20px;height:20px;margin-top:3px}
+.err{display:flex;gap:8px;align-items:flex-start;color:var(--note-ink);background:var(--note-bg);border-radius:var(--r-sm);padding:8px 12px;font-size:.9rem;font-weight:700}
+.err::before{content:"!";flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:.8rem;margin-top:2px}
+.demo{font-size:.8rem;color:var(--ink-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.demo .btn{min-height:36px;font-size:.8rem;padding:0 12px;border-style:dashed;border-color:var(--line);background:transparent;color:var(--ink-2);font-family:var(--font-body)}
+
+/* avatar */
+.avatar{flex:none;width:48px;height:48px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center}
+.avatar svg{width:34px;height:34px}
+
+/* ---------- home ---------- */
+.hero{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center;padding-block:24px 8px}
+.hero-mark{width:150px;height:190px;position:relative}
+.hero-mark svg{width:100%;height:100%}
+.logo{font-size:clamp(2.2rem,6vw,3.4rem);color:var(--teal-ink);letter-spacing:.06em}
+.sub{font-family:var(--font-display);font-size:clamp(1.05rem,2.4vw,1.3rem);margin-top:6px}
+.hero .row{margin-top:24px}
+.promise{display:flex;gap:16px;align-items:center;background:var(--teal-soft);border-radius:var(--r-lg);padding:18px 22px;color:var(--teal-ink);font-weight:700}
+.sec-title{font-size:1.05rem;display:flex;align-items:center;gap:10px}
+.recent{display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center;text-align:left;width:100%;cursor:pointer;font:inherit;color:inherit}
+.recent:hover{border-color:var(--teal)}
+.spine{width:56px;height:76px;border-radius:6px 10px 10px 6px;background:linear-gradient(90deg,color-mix(in srgb,var(--teal) 80%,#000) 0 8px,var(--teal) 8px);position:relative}
+.spine::after{content:"";position:absolute;right:12px;top:-4px;width:10px;height:30px;background:var(--accent);clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%)}
+.recent h3{font-size:1.2rem}
+.meta{font-size:.85rem;color:var(--ink-2)}
+.minibar{display:flex;gap:4px;margin-top:8px}
+.minibar i{flex:1;height:8px;border-radius:4px;background:var(--line);max-width:56px}
+.minibar i.on{background:var(--teal)}
+.journey{display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin:0}
+.journey li{font-size:.85rem;padding:6px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.journey li+li::before{content:"";width:0}
+.journey .arr{color:var(--ink-2);border:0;background:none;padding:6px 0}
+@media (max-width:620px){.hero{grid-template-columns:1fr;text-align:center;justify-items:center}.hero .row{justify-content:center}.hero-mark{width:110px;height:140px}.recent{grid-template-columns:auto 1fr}.recent .go{grid-column:1/-1}}
+
+/* ---------- form ---------- */
+.field{display:flex;flex-direction:column;gap:8px}
+.label{font-family:var(--font-display);font-weight:700;font-size:1.05rem}
+.hint-text{font-size:.85rem;color:var(--ink-2)}
+.input,.textarea{width:100%;border:2px solid var(--line);background:var(--surface);border-radius:var(--r-md);padding:12px 16px;font-size:1.05rem;line-height:1.7;transition:border-color .15s}
+.input:focus,.textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 4px var(--teal-soft)}
+.input.bad,.textarea.bad{border-color:var(--accent)}
+.textarea{resize:vertical;min-height:110px;font-family:var(--font-hand);font-weight:500;font-size:1.12rem}
+.choices{display:flex;flex-wrap:wrap;gap:10px}
+.choice{position:relative}
+.choice input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.choice span{display:flex;align-items:center;gap:8px;min-height:52px;padding:0 22px;border-radius:999px;border:2px solid var(--line);background:var(--surface);font-weight:700;font-family:var(--font-display);transition:all .15s}
+.choice span::before{content:"";width:18px;height:18px;border-radius:50%;border:2px solid var(--ink-2);background:var(--surface)}
+.choice input:checked+span{border-color:var(--teal);background:var(--teal-soft);color:var(--teal-ink)}
+.choice input:checked+span::before{border-color:var(--teal);background:var(--teal);box-shadow:inset 0 0 0 3px var(--surface)}
+.choice input:focus-visible+span{outline:3px solid var(--accent);outline-offset:3px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.form-grid .full{grid-column:1/-1}
+@media (max-width:640px){.form-grid{grid-template-columns:1fr}}
+
+/* ---------- chat ---------- */
+.chat-head{display:flex;flex-direction:column;gap:14px}
+.book-line{display:flex;align-items:center;gap:12px;font-family:var(--font-display)}
+.book-line .spine{width:30px;height:40px}
+.book-line .spine::after{right:6px;width:7px;height:16px}
+.book-line strong{font-size:1.2rem}
+.stages{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;list-style:none;padding:0;margin:0;counter-reset:st}
+.stages li{position:relative;display:flex;flex-direction:column;gap:6px;font-size:.82rem;color:var(--ink-2);font-family:var(--font-display);font-weight:700}
+.stages li::before{content:"";height:10px;border-radius:5px;background:var(--line)}
+.stages li.done::before{background:var(--teal)}
+.stages li.now::before{background:linear-gradient(90deg,var(--teal) var(--p,30%),var(--accent) var(--p,30%))}
+.stages li.now{color:var(--teal-ink)}
+.stages li.done{color:var(--teal-ink)}
+.qcount{font-size:.85rem;color:var(--ink-2)}
+.log{display:flex;flex-direction:column;gap:18px;padding-block:20px}
+.msg{display:flex;gap:12px;align-items:flex-start;max-width:min(640px,92%)}
+.msg.me{align-self:flex-end;flex-direction:row-reverse}
+.bubble{border-radius:20px;padding:14px 18px;min-width:0}
+.who{display:block;font-size:.72rem;font-weight:700;letter-spacing:.08em;margin-bottom:2px}
+.msg.ai .bubble{background:var(--surface);border:1px solid var(--line);border-top-left-radius:6px;box-shadow:var(--shadow)}
+.msg.ai .who{color:var(--teal-ink)}
+.msg.ai .q{font-family:var(--font-display);font-weight:700;font-size:1.12rem;color:var(--teal-ink);margin-top:4px}
+.msg.ai .ack{color:var(--ink)}
+.msg.me .bubble{background:var(--accent-soft);border:2px solid color-mix(in srgb,var(--accent) 70%,transparent);border-top-right-radius:6px}
+.msg.me .who{color:var(--orange);text-align:right}
+.msg.me p{font-family:var(--font-hand);font-weight:500;font-size:1.15rem;line-height:1.7}
+.msg.sys{align-self:center;max-width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{min-height:44px;padding:0 16px;border-radius:999px;border:2px solid var(--teal);background:var(--surface);color:var(--teal-ink);font-weight:700;cursor:pointer;font-size:.92rem}
+.chip:hover:not([disabled]){background:var(--teal-soft)}
+.chip[disabled]{border-color:var(--line);color:var(--ink-2);cursor:default}
+.chip.picked{background:var(--teal);color:var(--on-teal);border-color:var(--teal)}
+.typing{display:flex;gap:5px;padding:6px 2px}
+.typing i{width:8px;height:8px;border-radius:50%;background:var(--teal);opacity:.4;animation:blink 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes blink{50%{opacity:1}}
+.dock{position:sticky;bottom:0;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));padding-top:14px;background:linear-gradient(to bottom,transparent,var(--bg) 18px)}
+.dock-in{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:12px}
+.dock .textarea{min-height:76px}
+.dock-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.dock-row .grp{display:flex;flex-wrap:wrap;gap:8px}
+.finish{display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;padding:12px}
+
+/* ---------- organize ---------- */
+.ask-head{display:flex;gap:16px;align-items:flex-start}
+.ask-head h1{font-size:clamp(1.4rem,3.6vw,1.9rem);color:var(--teal-ink)}
+.cards{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px}
+.mcard{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--shadow);transition:box-shadow .15s,transform .15s}
+.mcard.dragging{box-shadow:0 0 0 3px var(--accent),0 16px 32px rgba(0,0,0,.15);transform:scale(1.01);z-index:2;position:relative}
+.handle{display:flex;flex-direction:column;align-items:center;gap:4px;touch-action:none;cursor:grab;background:none;border:0;padding:4px 2px;color:var(--ink-2)}
+.handle:active{cursor:grabbing}
+.num{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--teal-soft);color:var(--teal-ink);font-family:var(--font-display);font-weight:700;font-variant-numeric:tabular-nums}
+.grip{width:18px;height:12px;background:radial-gradient(circle,currentColor 1.6px,transparent 1.8px) 0 0/6px 6px;opacity:.7}
+.mcard h3{font-size:.95rem;color:var(--ink-2)}
+.words{font-family:var(--font-hand);font-weight:500;font-size:1.18rem;line-height:1.7;margin-top:2px}
+.words.empty{color:var(--ink-2);font-family:var(--font-body);font-weight:400;font-size:.95rem}
+.mcard .side{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.arrows{display:flex;gap:4px}
+.icon-btn{width:44px;height:44px;border-radius:50%;border:2px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--ink-2)}
+.icon-btn:hover:not([disabled]){border-color:var(--teal);color:var(--teal-ink)}
+.icon-btn[disabled]{opacity:.35;cursor:not-allowed}
+.icon-btn svg{width:18px;height:18px}
+.edit-area{grid-column:2/-1;display:flex;flex-direction:column;gap:10px}
+@media (max-width:560px){.mcard{grid-template-columns:auto 1fr}.mcard .side{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:center}.edit-area{grid-column:1/-1}}
+
+/* ---------- compose ---------- */
+.compose{display:grid;grid-template-columns:300px minmax(0,1fr);gap:24px;align-items:start}
+.memos{position:sticky;top:calc(80px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:10px;max-height:calc(100dvh - 190px);overflow:auto;padding-right:4px}
+.memos-head{display:flex;flex-direction:column;gap:6px;padding:4px 2px 6px}
+.memos-head h2{font-size:1.05rem}
+.memo{background:var(--surface-2);border-radius:var(--r-sm);border:1px solid var(--line)}
+.memo summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 14px;font-family:var(--font-display);font-weight:700;font-size:.9rem;min-height:48px}
+.memo summary::-webkit-details-marker{display:none}
+.memo summary .num{width:26px;height:26px;font-size:.8rem;background:var(--surface)}
+.memo summary::after{content:"";margin-left:auto;width:9px;height:9px;border-right:2.5px solid var(--ink-2);border-bottom:2.5px solid var(--ink-2);transform:rotate(45deg);transition:transform .2s}
+.memo[open] summary::after{transform:rotate(-135deg)}
+.memo .words{padding:0 14px 12px 50px;font-size:1.02rem}
+.memo.reason summary .num{background:var(--accent-soft)}
+.blocks{display:flex;flex-direction:column;gap:20px;min-width:0}
+.block{display:flex;flex-direction:column;gap:12px}
+.block-head{display:flex;gap:14px;align-items:flex-start}
+.block-head .num{flex:none;width:40px;height:40px;font-size:1.05rem;background:var(--teal);color:var(--on-teal)}
+.block-head h3{font-size:1.2rem}
+.block-head p{font-size:.88rem;color:var(--ink-2)}
+.block .textarea{min-height:150px;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(1.9em - 1px),var(--line) calc(1.9em - 1px),var(--line) 1.9em);background-attachment:local;line-height:1.9em;padding-top:.3em}
+.block-foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.count{font-size:.88rem;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.count b{font-size:1.05rem;color:var(--ink)}
+.helper{display:flex;gap:12px;align-items:flex-start;background:var(--teal-soft);border-radius:var(--r-md);padding:12px 14px}
+.helper .avatar{width:40px;height:40px}
+.helper .avatar svg{width:28px;height:28px}
+.helper .who{color:var(--teal-ink)}
+.helper p{font-family:var(--font-display);font-weight:700;color:var(--teal-ink)}
+.helper .row{margin-top:8px}
+.consult{display:flex;flex-direction:column;gap:10px;border:2px dashed var(--line);border-radius:var(--r-md);padding:14px}
+.consult .input{font-family:var(--font-hand);font-weight:500}
+.consult-log{display:flex;flex-direction:column;gap:10px}
+.consult-log .mine{align-self:flex-end;background:var(--accent-soft);border-radius:14px;padding:8px 14px;font-family:var(--font-hand);font-weight:500;max-width:90%}
+.bottom-bar{position:sticky;bottom:0;z-index:5;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));padding-top:12px;background:linear-gradient(to bottom,transparent,var(--bg) 16px)}
+.bottom-in{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:12px 16px}
+.paper{font-size:.85rem;color:var(--ink-2)}
+.paper b{font-variant-numeric:tabular-nums;color:var(--ink);font-size:1rem}
+.mobile-memos{display:none}
+@media (max-width:760px){
+  .compose{grid-template-columns:1fr}
+  .memos{position:static;max-height:none;overflow:visible}
+  .memos.desktop{display:none}
+  .mobile-memos{display:block}
+}
+.mobile-memos > summary{list-style:none;cursor:pointer;min-height:52px;display:flex;align-items:center;gap:10px;padding:0 18px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line);font-family:var(--font-display);font-weight:700}
+.mobile-memos > summary::-webkit-details-marker{display:none}
+.mobile-memos[open] > summary{margin-bottom:10px}
+
+/* ---------- reflect ---------- */
+.good-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px}
+.good-list li{display:flex;gap:14px;align-items:flex-start;font-size:1.05rem}
+.good-list svg{flex:none;width:30px;height:30px;margin-top:2px}
+.next-tip{display:flex;gap:14px;align-items:flex-start;background:var(--accent-soft);border-radius:var(--r-md);padding:16px 18px}
+.next-tip p{font-family:var(--font-display);font-weight:700;font-size:1.05rem}
+.evals{display:flex;flex-direction:column;gap:22px}
+.eval fieldset{border:0;margin:0;padding:0;min-width:0}
+.eval legend{font-family:var(--font-display);font-weight:700;font-size:1.05rem;margin-bottom:10px;padding:0}
+.faces{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;max-width:520px}
+.face{position:relative}
+.face input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer;width:100%;height:100%}
+.face label{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:var(--r-md);border:2px solid transparent;cursor:pointer;font-size:.78rem;color:var(--ink-2);transition:all .15s}
+.face svg{width:46px;height:46px}
+.face input:checked+label{border-color:var(--accent);background:var(--accent-soft);color:var(--ink);font-weight:700}
+.face input:focus-visible+label{outline:3px solid var(--teal);outline-offset:2px}
+.face input:hover+label{background:var(--surface-2)}
+.essay-view{font-family:var(--font-hand);font-weight:500;font-size:1.1rem;line-height:2;white-space:pre-wrap;background:var(--surface-2);border-radius:var(--r-md);padding:16px 20px;max-height:340px;overflow:auto}
+.essay-view h4{font-family:var(--font-display);font-size:.8rem;color:var(--ink-2);margin:12px 0 0;letter-spacing:.08em}
+.essay-view h4:first-child{margin-top:0}
+details.plain > summary{cursor:pointer;font-family:var(--font-display);font-weight:700;color:var(--teal-ink);min-height:44px;display:flex;align-items:center}
+.final{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;background:var(--teal);color:var(--on-teal);border-radius:var(--r-lg);padding:24px 28px}
+.final h2{font-size:clamp(1.3rem,3.4vw,1.7rem)}
+.final p{opacity:.9;margin-top:4px}
+.final svg{width:70px;height:88px}
+@media (max-width:520px){.final{grid-template-columns:1fr;text-align:center;justify-items:center}}
+
+/* ---------- research log (研究者用) ---------- */
+.research-link{display:flex;justify-content:center}
+.research-link .btn{font-size:.8rem;min-height:36px}
+.sess{display:grid;gap:10px;padding:18px 20px}
+.sess-meta{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:.88rem;color:var(--ink-2)}
+.sess-meta b{color:var(--ink);font-weight:700}
+.sess.now{border-color:var(--teal)}
+.log-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface)}
+.log-table{border-collapse:collapse;width:100%;min-width:680px;font-size:.84rem}
+.log-table th,.log-table td{white-space:nowrap;padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.log-table th{background:var(--surface-2);font-family:var(--font-display);white-space:nowrap;position:sticky;top:0}
+.log-table td.c-num{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.log-table td.c-txt{white-space:pre-wrap;min-width:240px}
+.log-table tr.k-answer td,.log-table tr.k-chip td,.log-table tr.k-consult td{background:var(--teal-soft)}
+.log-table tr.k-ghost td,.log-table tr.k-privacy td,.log-table tr.k-stuck td,.log-table tr.k-back td{background:var(--accent-soft)}
+.log-table tr.k-screen td{color:var(--ink-2)}
+.pill{display:inline-block;font-size:.76rem;padding:2px 8px;border-radius:999px;background:var(--surface-2);white-space:nowrap}
+
+/* ---------- voice (音声入力・読み上げ) ---------- */
+.said-ic{display:inline-block;vertical-align:-2px;margin-right:6px;color:var(--teal)}
+.said-ic svg{width:15px;height:15px}
+.kbd{gap:6px}
+.kbd svg{width:18px;height:18px;flex:none}
+textarea[hidden]{display:none!important}
+.check{display:flex;gap:10px;align-items:center;font-weight:700;cursor:pointer}
+.check input{width:22px;height:22px;accent-color:var(--teal)}
+.mic,.tts{gap:6px}
+.mic svg,.tts svg{width:18px;height:18px;flex:none}
+.mic.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);animation:micPulse 1.4s ease-in-out infinite}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(244,182,62,.55)}50%{box-shadow:0 0 0 8px rgba(244,182,62,0)}}
+.tts[aria-pressed="true"]{background:var(--teal-soft);color:var(--teal-ink);border-color:var(--teal)}
+.say{display:inline-grid;place-items:center;width:30px;height:30px;margin-left:4px;vertical-align:middle;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--teal-ink);cursor:pointer}
+.say svg{width:16px;height:16px}
+.say:hover{background:var(--teal-soft)}
+.say:focus-visible,.mic:focus-visible,.tts:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+
+/* ---------- modal / toast ---------- */
+.modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:20px;background:rgba(20,30,30,.45)}
+.modal-box{background:var(--surface);border-radius:var(--r-lg);padding:28px;max-width:440px;width:100%;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.modal-box h2{font-size:1.3rem}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--bg);padding:12px 22px;border-radius:999px;font-weight:700;font-size:.92rem;max-width:calc(100% - 32px)}
+
+.screen{animation:rise .35s ease both}
+@keyframes rise{from{opacity:.4;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+</head>
+<body>
+<header class="topbar" id="topbar"></header>
+<main id="main"></main>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-box">
+    <h2 id="modalTitle"></h2>
+    <p id="modalBody"></p>
+    <div class="row end">
+      <button class="btn btn-ghost btn-sm" id="modalCancel">つづける</button>
+      <button class="btn btn-primary btn-sm" id="modalOk">はい</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+/* ===== data ===== */
+const QUESTIONS = [
+  'この本で、いちばん心にのこった場面はどこ？',
+  'その場面を読んだとき、どんな気持ちになった？',
+  'どうして、そう感じたと思う？',
+  'そう思ったのは、登場人物のどんな行動や言葉から？',
+  'あなたにも、似た経験や気持ちになったことはある？',
+  'この本を読む前と読んだあとで、考えが変わったことはある？'
+];
+const DUMMY = [
+  '主人公が一人で暗い図書館に入った場面',
+  'こわかったけれど、少しわくわくした',
+  '自分だったら入れないと思ったから',
+  '主人公が「こわくても確かめたい」と言ったから',
+  '夜の学校に忘れ物を取りに行ったときに似ている',
+  '勇気は、こわくないことではなく、こわくても動くことだと思った'
+];
+const STAGES = ['本を思い出す','気持ちを見つける','理由を考える','自分とつなげる'];
+const Q_STAGE = [0,1,2,2,3,3];
+const STUCK = [
+  {chips:['びっくりした場面','うれしかった場面','かなしかった場面','ふしぎだと思った場面','登場人物に言いたくなったこと'], follow:'どんな場面だったか、一言でもいいよ。'},
+  {chips:['うれしい','こわい','わくわく','かなしい','ふしぎ','もやもや','いくつかまざっている'], follow:'そのときの気持ちを、あなたの言葉で書いてみよう。'},
+  {chips:['自分だったら…と考えた','前に似たことがあった','登場人物が心配だった','思っていたのとちがった'], follow:'そう感じたわけを、短く書いてみよう。'},
+  {chips:['登場人物の言葉','登場人物の行動','場面のようす','さし絵'], follow:'本のどこに書いてあったか、思い出せる？'},
+  {chips:['家でのこと','学校でのこと','友だちとのこと','思いうかばない'], follow:'話してもいいところだけ、書いてみてね。'},
+  {chips:['登場人物の見え方','自分の気持ち','大切だと思うこと','本や図書館への見方'], follow:'読む前とくらべて、どう変わったかな？'}
+];
+const CARD_DEFS = [
+  {key:'scene',label:'心にのこった場面'},
+  {key:'feeling',label:'そのときの気持ち'},
+  {key:'reason',label:'そう感じた理由'},
+  {key:'clue',label:'本の中の手がかり'},
+  {key:'exp',label:'自分の経験'},
+  {key:'after',label:'読んだあとの考え'}
+];
+const BLOCKS = [
+  {key:'intro', title:'はじめ', desc:'この本を選んだ理由や、読む前の気持ち',
+   hints:['この本を選んだとき、どんなことを期待していた？','読む前は、どんなお話だと思っていた？','表紙や題名を見て、どんなことを感じた？']},
+  {key:'impress', title:'心にのこったこと', desc:'いちばん心にのこった場面と、そのときの気持ち',
+   hints:['その場面のようすを、もう少しくわしく思い出せる？','そのとき、心の中でどんな声がした？','その場面を一言で言うと、どんな場面？']},
+  {key:'think', title:'考えたこと', desc:'そう感じた理由、本の中の手がかり、自分の経験',
+   hints:['なぜそう考えたのか、もう一文書いてみよう。','本の中のどの言葉が、手がかりになった？','あなたの経験と、どこが似ていた？']},
+  {key:'end', title:'おわり', desc:'読んだあとの考えや、自分の中で変わったこと',
+   hints:['これから自分が大切にしたいことはある？','読む前の自分に、何と伝えたい？','この本を、どんな人にすすめたい？']}
+];
+const DEMO_ESSAY = {
+  intro:'わたしがこの本を選んだのは、表紙がおもしろそうだったからです。読む前は、ちょっとこわいお話かなと思っていました。',
+  impress:'いちばん心にのこったのは、主人公が一人で暗い図書館に入った場面です。読んでいて、こわかったけれど、少しわくわくしました。',
+  think:'わたしだったら、きっと入れないと思います。でも主人公は「こわくても確かめたい」と言っていました。わたしも夜の学校に忘れ物を取りに行ったとき、こわかったけれど行きました。そのときと似ていると思いました。',
+  end:'この本を読んで、勇気は、こわくないことではなく、こわくても動くことだと思いました。これからは、こわいことがあっても、少しだけ前に進んでみたいです。'
+};
+const REFUSAL = '感想文を全部代わりに書くことはできないよ。でも、書きたいことを見つけたり、書く順番を考えたりすることはできるよ。今、いちばん困っているところを教えてね。';
+const PRIVACY = '名前や学校名、住所、電話番号は書かなくて大丈夫だよ。その部分をけして、もう一度送ってね。';
+const GOOD_POINTS = [
+  '心にのこった場面を、自分の気持ちといっしょに書けたね。',
+  '本の中の言葉を手がかりにして、理由を考えられたね。',
+  '自分の経験と本の内容をつなげられたね。'
+];
+const NEXT_TIPS = [
+  '主人公の言葉を読んだときに、なぜ自分の経験を思い出したのかを、もう少し書いてみよう。',
+  '「わくわくした」気持ちがどこから来たのかを、一文足してみよう。',
+  'おわりに、これからやってみたいことを一つ書いてみよう。'
+];
+const EVALS = ['自分の考えを見つけられた','自分の言葉で書けた','本について前より深く考えられた','自分の文章に良いところがあると思う'];
+const FACE_LABELS = ['あまり','少し','まあまあ','けっこう','とても'];
+const FLOW = [
+  {id:'register',label:'本をえらぶ'},
+  {id:'chat',label:'AIと話す'},
+  {id:'organize',label:'考えを整理'},
+  {id:'compose',label:'書く'},
+  {id:'reflect',label:'ふり返る'}
+];
+const PREV = {register:'home',chat:'register',organize:'chat',compose:'organize',reflect:'compose'};
+const EXAMPLE_BOOK = {grade:'5年生',title:'ふしぎな図書館',author:'やまだ はなこ',status:'読み終わった',reason:'表紙がおもしろそうだったから'};
+
+/* ===== state (front-end only; cleared on reload) ===== */
+const S = {
+  screen:'home',
+  hasSession:false,
+  book:{grade:'',title:'',author:'',status:'',reason:''},
+  chat:{q:0,answers:[],log:[],qAt:[],done:false,busy:false,draft:'',err:''},
+  cards:{}, order:CARD_DEFS.map(c=>c.key), cardsFrom:'',
+  essay:{intro:'',impress:'',think:'',end:''},
+  hintIdx:{}, hintOpen:{}, consultOpen:{}, consultLog:{},
+  tipIdx:0, evals:{}
+};
+
+/* ===== helpers ===== */
+const $ = (s,el=document)=>el.querySelector(s);
+const $$ = (s,el=document)=>[...el.querySelectorAll(s)];
+const esc = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const countChars = s=>[...String(s).replace(/\s/g,'')].length;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const GHOST_RE = /(感想文|作文|文章|ぶんしょう|かんそうぶん).{0,6}(作って|つくって|書いて|かいて)|(続き|つづき).{0,3}(書いて|かいて)|代わりに|かわりに|全部書いて|ぜんぶ書いて|ぜんぶかいて|書いてください|かいてください/;
+const PRIV_RE = /\d{2,4}[-ー－‐]\d{2,4}[-ー－‐]\d{3,4}|\d{10,11}|小学校|〒|住所|番地|丁目|電話番号は|でんわばんごう/;
+
+/* ===== research log (研究用の記録; kept only in this browser's localStorage, never sent anywhere) ===== */
+const LOG_KEY = 'shiori-research-logs';
+const EV_LABEL = {
+  screen:'画面の移動', book:'本の登録', ai:'しおりの発言', answer:'子どもの答え', ghost:'代筆の依頼',
+  privacy:'個人情報で止めた', stuck:'思いつかない', chip:'選択肢をえらんだ', back:'前の質問にもどった',
+  demo:'体験用ボタン', card_edit:'カードを書きなおした', card_order:'カードの順番をかえた',
+  hint:'ヒントを見た', consult:'AIに相談（子ども）', consult_reply:'AIに相談（しおり）', essay:'文章を書いた・直した',
+  eval:'自己評価', tip:'つぎの提案をかえた', pause:'途中でやめた', finish:'おわり',
+  voice:'音声入力（聞き取った言葉）', listen:'読み上げを聞いた', setting:'設定の変更', type_open:'手で入力をひらいた'
+};
+const SCREEN_LABEL = {home:'ホーム',log:'研究者用',...Object.fromEntries(FLOW.map(f=>[f.id,f.label]))};
+const URL_ID = (new URLSearchParams(location.search).get('id')||'').slice(0,20);
+const NO_TEXT = '（個人情報が入っていたため、本文は記録していません）';
+let R = null;            // current session's log
+let qShownAt = {};       // question index -> time it was shown (for 回答までの秒数)
+let essayLogged = {};    // block key -> last essay text written to the log
+S.pid = URL_ID;
+function newLog(){
+  const now=Date.now();
+  R={sessionId:now.toString(36), participantId:S.pid||URL_ID, startMs:now, startedAt:new Date(now).toISOString(), events:[]};
+  R.events.push({time:R.startedAt, sec:0, screen:S.screen, type:'setting', text:'開始時の設定：'+settingText()});
+}
+function logEv(type,data={}){
+  if(!R) newLog();
+  const now=Date.now();
+  R.events.push({time:new Date(now).toISOString(), sec:Math.round((now-R.startMs)/100)/10, screen:S.screen, type, ...data});
+  saveLog();
+}
+function snapshot(){
+  return {book:S.book, answers:S.chat.answers, cards:S.cards, cardOrder:S.order, essay:S.essay,
+    evals:Object.fromEntries(EVALS.map((q,i)=>[q,S.evals[i]==null?null:S.evals[i]+1]))};
+}
+function readLogs(){ try{ return JSON.parse(localStorage.getItem(LOG_KEY)||'{}'); }catch{ return {}; } }
+function saveLog(){
+  if(!R) return;
+  R.participantId=S.pid||URL_ID; R.final=snapshot();
+  try{ const all=readLogs(); all[R.sessionId]=R; localStorage.setItem(LOG_KEY,JSON.stringify(all)); }catch{}
+}
+function allSessions(){
+  const all=readLogs(); if(R) all[R.sessionId]=R;
+  return Object.values(all).sort((a,b)=>b.startMs-a.startMs);
+}
+function flushEssay(){
+  BLOCKS.forEach(b=>{
+    const v=S.essay[b.key]||'';
+    if(v!==(essayLogged[b.key]||'')){ essayLogged[b.key]=v; logEv('essay',{block:b.title,text:v,chars:countChars(v),input:takeHow('essay-'+b.key)}); }
+  });
+}
+const pad2 = n=>String(n).padStart(2,'0');
+const fmtTime = iso=>{const d=new Date(iso);return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;};
+const CSV_HEAD = ['セッションID','研究用ID','本のタイトル','日時','開始からの秒数','画面','できごと','質問番号','まとまり','内容','回答までの秒数','文字数','入力方法'];
+function csvRows(r){
+  return r.events.map(e=>[r.sessionId,r.participantId,r.final?.book?.title||'',fmtTime(e.time),e.sec,SCREEN_LABEL[e.screen]||e.screen,
+    EV_LABEL[e.type]||e.type,e.qi==null?'':e.qi+1,e.block||'',e.text||'',e.wait??'',e.chars??'',e.input||'']);
+}
+function toCsv(rows){
+  const cell=v=>{const s=String(v??'');return /[",\r\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;};
+  return '﻿'+rows.map(r=>r.map(cell).join(',')).join('\r\n');   // BOM so Excel reads Japanese correctly
+}
+function download(name,text,type){
+  const url=URL.createObjectURL(new Blob([text],{type}));
+  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+const fileStem = r=>`shiori_${(r.participantId||'noid').replace(/[^\w-]/g,'_')}_${fmtTime(r.startedAt).replace(/[-: ]/g,'').slice(0,12)}`;
+function downloadCsv(list,name){ flushEssay(); download(name,toCsv([CSV_HEAD,...list.flatMap(csvRows)]),'text/csv'); }
+function downloadJson(r){ flushEssay(); const {startMs,...out}=r; download(fileStem(r)+'.json',JSON.stringify(out,null,2),'application/json'); }
+
+/* ===== voice (音声入力・読み上げ; uses the browser's built-in speech features) ===== */
+const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+const TTS_OK = 'speechSynthesis' in window;
+const MIC_SVG = `<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3" fill="currentColor"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+const SPEAK_SVG = `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path d="M13 7.2a4 4 0 0 1 0 5.6M15.2 5a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+const VOICE = {rec:null,key:null,el:null,btn:null,base:'',final:'',heard:'',hidden:false,silT:0,inserting:false};
+const HOW = {};   // input key -> {voice,typed} since the last send / essay snapshot
+let voiceSent = false;   // true while an answer spoken in hidden mode is being sent
+/* researcher settings, remembered in this browser */
+const CFG = {showSpoken:false, voice:'', rate:1};
+try{ Object.assign(CFG,JSON.parse(localStorage.getItem('shiori-settings')||'{}')); }catch{}
+const saveCfg = ()=>{ try{ localStorage.setItem('shiori-settings',JSON.stringify(CFG)); }catch{} };
+const RATES = [[.9,'ゆっくり'],[1,'ふつう'],[1.1,'少し速い']];
+const markTyped = k=>{ if(!VOICE.inserting) (HOW[k]=HOW[k]||{}).typed=true; };
+function takeHow(k){ const h=HOW[k]||{}; delete HOW[k]; return h.voice&&h.typed?'声＋文字':h.voice?'声':h.typed?'文字':''; }
+const micBtn = (key,target,disabled='',cls='btn-soft btn-sm')=>SR?`<button type="button" class="btn ${cls} mic" data-mic="${key}" data-target="${target}" aria-pressed="false" ${disabled}>${MIC_SVG}<span>声で入れる</span></button>`:'';
+const sayBtn = text=>TTS_OK?`<button type="button" class="say" data-say="${esc(text)}" aria-label="読み上げる" title="読み上げる">${SPEAK_SVG}</button>`:'';
+const KEY_SVG = `<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="5" width="16" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 8.5h1M9.5 8.5h1M13.5 8.5h1M6 11.8h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+const saidIcon = m=>m.voice?`<span class="said-ic" title="声で答えた">${MIC_SVG}</span>`:'';
+// in chat and consult, spoken words can stay off the screen; essay blocks always show them
+const hideSpoken = key=>!CFG.showSpoken && (key==='chat'||key.startsWith('consult-'));
+function voiceCtx(key){
+  if(key==='chat') return {qi:S.chat.q};
+  const [kind,k]=key.split('-'), b=BLOCKS.find(x=>x.key===k);
+  return {block:(b?.title||'')+(kind==='consult'?'（相談）':'')};
+}
+function setVoiceText(el,v){ el.value=v; VOICE.inserting=true; el.dispatchEvent(new Event('input',{bubbles:true})); VOICE.inserting=false; }
+function micLook(btn,on,hidden){ if(!btn?.isConnected) return; btn.classList.toggle('on',on); btn.setAttribute('aria-pressed',on); btn.querySelector('span').textContent=on?(hidden?'きいてるよ…':'とめる'):'声で入れる'; }
+function startVoice(key,el,btn){
+  stopVoice(true);
+  if(TTS_OK) speechSynthesis.cancel();   // don't let the mic hear しおり's voice
+  const hidden=hideSpoken(key);
+  const rec=new SR(); rec.lang='ja-JP'; rec.interimResults=true; rec.continuous=true;
+  Object.assign(VOICE,{rec,key,el,btn,base:el.hidden?'':el.value,final:'',heard:'',hidden});
+  rec.onresult=e=>{
+    let interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) VOICE.final+=r[0].transcript; else interim+=r[0].transcript; }
+    VOICE.heard=VOICE.final+interim;
+    if(VOICE.heard) (HOW[key]=HOW[key]||{}).voice=true;
+    if(hidden){ clearTimeout(VOICE.silT); VOICE.silT=setTimeout(()=>{ if(VOICE.rec===rec) stopVoice(); },2500); }   // 2.5s of silence = done talking
+    else if(el.isConnected) setVoiceText(el,VOICE.base+VOICE.heard);
+  };
+  rec.onerror=e=>{
+    const msg={'not-allowed':'マイクが使えないよ。ブラウザでマイクを「許可」してね。','service-not-allowed':'このブラウザでは音声入力が使えないよ。','no-speech':'声が聞こえなかったよ。もう一度ためしてね。','audio-capture':'マイクが見つからないよ。','network':'音声入力には、インターネットが必要だよ。'}[e.error];
+    if(msg) toast(msg);
+  };
+  rec.onend=()=>{ if(VOICE.rec===rec) finishVoice(); };
+  try{ rec.start(); }catch{ toast('音声入力を始められなかったよ。'); VOICE.rec=null; return; }
+  micLook(btn,true,hidden);
+  if(hidden) toast('話しおわって少しまつと、そのまま送られるよ');
+}
+// forced=true when cut off by a re-render or screen change: the words are logged but not sent
+function finishVoice(forced){
+  const {key,btn,heard,base,hidden}=VOICE;
+  clearTimeout(VOICE.silT);
+  if(heard.trim()) logEv('voice',{...voiceCtx(key),text:PRIV_RE.test(heard)?NO_TEXT:heard,chars:countChars(heard)});
+  micLook(btn,false);
+  Object.assign(VOICE,{rec:null,key:null,el:null,btn:null,heard:'',hidden:false});
+  if(hidden&&!forced&&heard.trim()) sendSpoken(key,(base+heard).trim());
+}
+function sendSpoken(key,text){
+  voiceSent=true;
+  if(key==='chat'){ S.chat.draft=text; send(); }
+  else { const k=key.split('-')[1], inp=$(`#ci-${k}`), b=$(`[data-ask="${k}"]`); if(inp&&b){ inp.value=text; b.click(); } }
+  voiceSent=false;
+}
+// force=true: stop right now (before a send or re-render); otherwise let the last words arrive first
+function stopVoice(force){
+  const r=VOICE.rec; if(!r) return;
+  if(force){ finishVoice(true); try{r.abort();}catch{} } else { try{r.stop();}catch{ finishVoice(); } }
+}
+let ttsOn=false; try{ ttsOn=localStorage.getItem('shiori-tts')==='1'; }catch{}
+let ttsMute=false;   // true while the demo progress is being loaded
+const jaVoices = ()=>TTS_OK?speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang)):[];
+// the smoothest voices first: Edge's neural "Natural" voices, Chrome's Google voice, then Apple's enhanced ones
+const voiceRank = v=>/Natural|Online/i.test(v.name)?0:/Google/i.test(v.name)?1:/Premium|Enhanced|プレミアム|拡張/i.test(v.name)?2:/O-ren|Kyoko|Otoya|Hattori/i.test(v.name)?3:4;
+function pickVoice(){
+  const vs=jaVoices(); if(!vs.length) return null;
+  return vs.find(v=>v.name===CFG.voice) || [...vs].sort((a,b)=>voiceRank(a)-voiceRank(b))[0];
+}
+function speak(text,now){
+  if(!TTS_OK||!text) return;
+  if(now) speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text); u.lang='ja-JP'; u.rate=CFG.rate; u.pitch=1;
+  const v=pickVoice(); if(v) u.voice=v;
+  speechSynthesis.speak(u);
+}
+if(TTS_OK) speechSynthesis.onvoiceschanged=()=>{ if(S.screen==='log'&&document.activeElement?.id!=='cfgVoice') render(); };
+const autoSpeak = text=>{ if(ttsOn&&!ttsMute) speak(text); };
+const ttsToggle = ()=>TTS_OK?`<button type="button" class="btn btn-ghost btn-sm tts" id="ttsToggle" aria-pressed="${ttsOn}">${SPEAK_SVG}<span>よみあげ ${ttsOn?'ON':'OFF'}</span></button>`:'';
+const settingText = ()=>`よみあげ：${ttsOn?'ON':'OFF'}／声：${pickVoice()?.name||'なし'}／速さ：${RATES.find(r=>r[0]===CFG.rate)?.[1]||CFG.rate}／話している間の文字：${CFG.showSpoken?'出す':'出さない'}`;
+function bindVoice(){
+  $$('[data-mic]').forEach(btn=>btn.onclick=()=>{
+    if(VOICE.btn===btn){ stopVoice(); return; }
+    if(btn.dataset.mic==='chat'&&CFG.showSpoken&&!S.chat.typing){ S.chat.typing=true; render(); $('[data-mic="chat"]')?.click(); return; }
+    const el=$(btn.dataset.target); if(!el) return;
+    startVoice(btn.dataset.mic,el,btn); el.focus({preventScroll:true});
+  });
+  $$('[data-say]').forEach(b=>b.onclick=()=>{ stopVoice(true); speak(b.dataset.say,true); logEv('listen',{text:b.dataset.say}); });
+  const t=$('#ttsToggle');
+  if(t) t.onclick=()=>{
+    ttsOn=!ttsOn; try{ localStorage.setItem('shiori-tts',ttsOn?'1':'0'); }catch{}
+    if(!ttsOn&&TTS_OK) speechSynthesis.cancel();
+    t.setAttribute('aria-pressed',ttsOn); t.querySelector('span').textContent=`よみあげ ${ttsOn?'ON':'OFF'}`;
+    logEv('setting',{text:`よみあげを${ttsOn?'ON':'OFF'}にした`});
+  };
+}
+
+const GUIDE_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 6a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v38l-11-7-11 7z" fill="var(--teal)"/><circle cx="19.5" cy="17" r="2.3" fill="var(--surface)"/><circle cx="28.5" cy="17" r="2.3" fill="var(--surface)"/><path d="M20 23.5q4 3.6 8 0" stroke="var(--surface)" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="16.5" cy="22" r="1.8" fill="var(--accent)" opacity=".8"/><circle cx="31.5" cy="22" r="1.8" fill="var(--accent)" opacity=".8"/></svg>`;
+const avatar = (cls='')=>`<div class="avatar ${cls}" aria-hidden="true">${GUIDE_SVG}</div>`;
+const INFO_SVG = `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 9v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="10" cy="6" r="1.2" fill="currentColor"/></svg>`;
+const UP_SVG = `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const DOWN_SVG = `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const CHECK_SVG = `<svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="14" fill="var(--teal-soft)"/><path d="M9 15.5l4 4 8-9" fill="none" stroke="var(--teal)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const privacyNote = (text='名前・学校名・住所・電話番号は書かないでね。')=>`<div class="note">${INFO_SVG}<span>${text}</span></div>`;
+
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.hidden=false;
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,2600);
+}
+function confirmBox({title,body,ok='はい',cancel='つづける',onOk}){
+  const m=$('#modal'); $('#modalTitle').textContent=title; $('#modalBody').textContent=body;
+  $('#modalOk').textContent=ok; $('#modalCancel').textContent=cancel;
+  m.hidden=false; $('#modalCancel').focus();
+  const close=()=>{m.hidden=true;$('#modalOk').onclick=null;$('#modalCancel').onclick=null;};
+  $('#modalOk').onclick=()=>{close();onOk&&onOk();};
+  $('#modalCancel').onclick=close;
+  m.onclick=e=>{if(e.target===m)close();};
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#modal').hidden){$('#modalCancel').click();}});
+
+function go(screen){
+  stopVoice(true); if(TTS_OK) speechSynthesis.cancel();
+  if(S.screen==='compose') flushEssay();
+  if(screen==='log'){ if(S.screen!=='log') S.beforeLog=S.screen; }
+  else if(screen!=='home') S.hasSession = !!S.book.title;
+  const from=S.screen;
+  S.screen=screen; S.lastScreen = screen==='home'||screen==='log' ? S.lastScreen : screen;
+  if(screen!=='log' && from!=='log' && from!==screen) logEv('screen',{text:SCREEN_LABEL[screen]});
+  render(); window.scrollTo({top:0,behavior:reduceMotion?'auto':'smooth'});
+}
+function quit(){
+  confirmBox({title:'今日はここまでにする？',body:'ここまで考えたことは、とっておくよ。ホームの「つづきから」で、また始められるよ。',ok:'ここまでにする',onOk:()=>{logEv('pause');go('home');toast('おつかれさま。考えたことはとってあるよ');}});
+}
+
+/* ===== top bar ===== */
+function renderTop(){
+  const i = FLOW.findIndex(f=>f.id===S.screen);
+  const brand = `<button class="brand" id="toHome" aria-label="ホームへ">${GUIDE_SVG}<span>ことばのしおり</span></button>`;
+  if(S.screen==='home'){ $('#topbar').innerHTML=`<div class="topbar-in">${brand}</div>`; $('#toHome').onclick=()=>{}; return; }
+  if(S.screen==='log'){
+    $('#topbar').innerHTML=`<div class="topbar-in">${brand}<div class="top-actions"><button class="btn btn-ghost" id="topBack">もどる</button></div></div>`;
+    $('#toHome').onclick=$('#topBack').onclick=()=>go(S.beforeLog||'home'); return;
+  }
+  $('#topbar').innerHTML = `<div class="topbar-in">
+    ${brand}
+    <ol class="flow" aria-label="すすみぐあい">${FLOW.map((f,k)=>`<li class="${k<i?'done':k===i?'now':''}" ${k===i?'aria-current="step"':''}><span class="dot"></span>${f.label}${k===i?'<span class="sr-only">（いまここ）</span>':''}</li>`).join('')}</ol>
+    <div class="flow-mini"><span class="stp">ステップ </span>${i+1} / ${FLOW.length}　<b>${FLOW[i].label}</b></div>
+    <div class="top-actions">
+      <button class="btn btn-ghost" id="topBack">もどる</button>
+      <button class="btn btn-ghost" id="topQuit">途中でやめる</button>
+    </div></div>`;
+  $('#toHome').onclick=quit;
+  $('#topBack').onclick=()=>go(PREV[S.screen]);
+  $('#topQuit').onclick=quit;
+}
+
+/* ===== 1. home ===== */
+function renderHome(){
+  const has = S.hasSession;
+  const b = has ? S.book : EXAMPLE_BOOK;
+  const stepIdx = has ? Math.max(0,FLOW.findIndex(f=>f.id===S.lastScreen)) : 1;
+  const where = has ? `「${FLOW[stepIdx].label}」のところまで進んだよ` : '「気持ちを見つける」のところまで進んだよ';
+  return `<section class="wrap screen stack" style="gap:28px">
+    <div class="hero">
+      <div class="hero-mark" aria-hidden="true">
+        <svg viewBox="0 0 150 190"><rect x="8" y="22" width="134" height="160" rx="16" fill="var(--surface)" stroke="var(--line)" stroke-width="2"/><path d="M28 60h94M28 84h94M28 108h70M28 132h84" stroke="var(--line)" stroke-width="5" stroke-linecap="round"/><path d="M96 6a6 6 0 0 1 6-6h22a6 6 0 0 1 6 6v96l-17-11-17 11z" fill="var(--teal)"/><circle cx="106" cy="40" r="3.4" fill="var(--surface)"/><circle cx="120" cy="40" r="3.4" fill="var(--surface)"/><path d="M107 50q6 5 12 0" stroke="var(--surface)" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="102" cy="48" r="2.6" fill="var(--accent)"/><circle cx="124" cy="48" r="2.6" fill="var(--accent)"/></svg>
+      </div>
+      <div>
+        <h1 class="logo">ことばのしおり</h1>
+        <p class="sub">本を読んで感じたことを、いっしょに言葉にしよう</p>
+        <div class="row">
+          <button class="btn btn-primary btn-lg" id="btnNew">新しくはじめる</button>
+          <button class="btn btn-ghost btn-lg" id="btnCont">つづきから</button>
+        </div>
+      </div>
+    </div>
+    <div class="promise">${avatar()}<p>ここでは、AIが感想文を代わりに書くのではなく、あなたの考えを見つけるお手伝いをします。</p></div>
+    <div class="stack" style="gap:12px">
+      <h2 class="sec-title">さいきん取り組んだ本</h2>
+      <button class="card recent" id="recentCard">
+        <div class="spine" aria-hidden="true"></div>
+        <div style="min-width:0">
+          <h3>${esc(b.title)}</h3>
+          <p class="meta">${esc(b.author||'作者名なし')}　・　${esc(b.grade)}</p>
+          <p class="meta">${where}</p>
+          <div class="minibar" aria-hidden="true">${FLOW.map((_,k)=>`<i class="${k<=stepIdx?'on':''}"></i>`).join('')}</div>
+        </div>
+        <span class="btn btn-soft btn-sm go">つづきから</span>
+      </button>
+      ${has?'':'<p class="hint-text">※ 体験用の見本です。おすと、とちゅうから試せます。</p>'}
+    </div>
+    <div class="stack" style="gap:10px">
+      <h2 class="sec-title">すすめかた</h2>
+      <ol class="journey">
+        ${['本を思い出す','気持ちに気づく','理由を考える','自分とつなげる','自分の言葉で書く','よさに気づく'].map((t,k)=>`${k?'<li class="arr" aria-hidden="true">→</li>':''}<li>${t}</li>`).join('')}
+      </ol>
+    </div>
+    <p class="research-link"><button class="btn btn-quiet" id="toLog">研究者用：記録と設定</button></p>
+  </section>`;
+}
+function bindHome(){
+  $('#btnNew').onclick=()=>{
+    if(S.hasSession){
+      confirmBox({title:'新しい本ではじめる？',body:'いま取り組んでいる本のメモは、なくなるよ。',ok:'新しくはじめる',onOk:()=>{resetAll();go('register');}});
+    } else { resetAll(); go('register'); }
+  };
+  const cont=()=>{
+    if(S.hasSession){ go(S.lastScreen||'chat'); return; }
+    loadDemoProgress(); go('chat');
+  };
+  $('#btnCont').onclick=cont; $('#recentCard').onclick=cont;
+  $('#toLog').onclick=()=>go('log');
+}
+function resetAll(){
+  S.book={grade:'',title:'',author:'',status:'',reason:''};
+  resetChat(); S.essay={intro:'',impress:'',think:'',end:''};
+  S.cards={}; S.order=CARD_DEFS.map(c=>c.key); S.cardsFrom='';
+  S.hintIdx={};S.hintOpen={};S.consultOpen={};S.consultLog={};S.evals={};S.tipIdx=0;
+  S.hasSession=false; S.lastScreen=null; S.regErr=null;
+  S.pid=URL_ID; R=null; essayLogged={};   // the next event starts a new log session
+}
+function resetChat(){ S.chat={q:0,answers:[],log:[],qAt:[],done:false,busy:false,draft:'',err:''}; qShownAt={}; }
+function loadDemoProgress(){
+  resetAll(); S.book={...EXAMPLE_BOOK};
+  logEv('demo',{text:'見本のとちゅうから始めた'});
+  ttsMute=true; startChat();
+  for(let k=0;k<2;k++){ S.chat.log.push({who:'me',text:DUMMY[k]}); S.chat.answers.push(DUMMY[k]); advanceQ(DUMMY[k]); }
+  ttsMute=false; autoSpeak(QUESTIONS[2]);
+  S.chat.log.push({who:'sys',text:'前回のつづきだよ。'});
+}
+
+/* ===== 2. register ===== */
+function renderRegister(){
+  const b=S.book, e=S.regErr||{};
+  const radio=(name,val,cur)=>`<label class="choice"><input type="radio" name="${name}" value="${val}" ${cur===val?'checked':''}><span>${val}</span></label>`;
+  return `<section class="wrap screen stack" style="max-width:760px">
+    <div class="stack" style="gap:6px">
+      <p class="eyebrow">ステップ 1</p>
+      <h1 style="font-size:1.7rem">どんな本を読んだか、教えてね</h1>
+    </div>
+    ${privacyNote('ここには、あなたの名前や学校名、住所、電話番号は書かないでね。')}
+    <form class="card form-grid" id="regForm" novalidate>
+      <div class="field full">
+        <label class="label" for="fPid">けんきゅう用の番号 <span class="tag">先生からもらった番号</span></label>
+        <input class="input ${e.pid?'bad':''}" id="fPid" name="pid" value="${esc(S.pid)}" placeholder="れい：A-03" autocomplete="off" maxlength="20" style="max-width:220px">
+        ${e.pid?`<p class="err" role="alert">${e.pid}</p>`:''}
+      </div>
+      <div class="field full" role="radiogroup" aria-labelledby="gLabel">
+        <span class="label" id="gLabel">学年</span>
+        <div class="choices">${['4年生','5年生','6年生'].map(g=>radio('grade',g,b.grade)).join('')}</div>
+        ${e.grade?`<p class="err" role="alert">${e.grade}</p>`:''}
+      </div>
+      <div class="field full">
+        <label class="label" for="fTitle">本のタイトル</label>
+        <input class="input ${e.title?'bad':''}" id="fTitle" name="title" value="${esc(b.title)}" placeholder="れい：ふしぎな図書館" autocomplete="off">
+        ${e.title?`<p class="err" role="alert">${e.title}</p>`:''}
+      </div>
+      <div class="field">
+        <label class="label" for="fAuthor">作者名 <span class="tag">なくてもOK</span></label>
+        <input class="input" id="fAuthor" name="author" value="${esc(b.author)}" placeholder="れい：やまだ はなこ" autocomplete="off">
+      </div>
+      <div class="field" role="radiogroup" aria-labelledby="sLabel">
+        <span class="label" id="sLabel">読み終わった？</span>
+        <div class="choices">${radio('status','読み終わった',b.status)}${radio('status','まだ途中',b.status)}</div>
+        ${e.status?`<p class="err" role="alert">${e.status}</p>`:''}
+      </div>
+      <div class="field full">
+        <label class="label" for="fReason">この本を選んだ理由 <span class="tag">なくてもOK</span></label>
+        <textarea class="textarea" id="fReason" name="reason" rows="2" placeholder="れい：表紙がおもしろそうだったから">${esc(b.reason)}</textarea>
+      </div>
+      <div class="full row between">
+        <div class="demo">体験用：<button type="button" class="btn" id="fillEx">入力例を入れる</button></div>
+        <button type="submit" class="btn btn-primary btn-lg">AIと話してみる</button>
+      </div>
+    </form>
+  </section>`;
+}
+function bindRegister(){
+  const f=$('#regForm');
+  const el=f.elements;
+  const read=()=>({grade:el.grade.value,title:el.title.value.trim(),author:el.author.value.trim(),status:el.status.value,reason:el.reason.value.trim()});
+  el.pid.oninput=()=>{S.pid=el.pid.value.normalize('NFKC').trim();};
+  $('#fillEx').onclick=()=>{S.book={...EXAMPLE_BOOK};S.regErr=null;logEv('demo',{text:'入力例を入れた'});render();toast('入力例を入れたよ');};
+  f.onsubmit=ev=>{
+    ev.preventDefault();
+    const nb=read(), err={};
+    S.pid=el.pid.value.normalize('NFKC').trim();
+    if(/[^\w-]/.test(S.pid)) err.pid='番号は、英字・数字・「-」で入れてね。';
+    if(!nb.grade) err.grade='学年をえらんでね。';
+    if(!nb.title) err.title='本のタイトルを入れてね。';
+    if(!nb.status) err.status='読み終わったかどうか、えらんでね。';
+    if(!err.title && PRIV_RE.test(nb.title+nb.author+nb.reason)){ err.title='名前や学校名、住所、電話番号は入れないでね。'; logEv('privacy',{text:NO_TEXT}); }
+    S.book=nb;
+    if(Object.keys(err).length){S.regErr=err;render();const first=$('.err');first&&first.scrollIntoView({block:'center'});return;}
+    S.regErr=null;
+    logEv('book',{text:`${nb.grade}／『${nb.title}』／${nb.author||'作者名なし'}／${nb.status}／選んだ理由：${nb.reason||'なし'}`});
+    if(S.chat.bookTitle!==nb.title){ resetChat(); S.essay={intro:'',impress:'',think:'',end:''}; S.cardsFrom=''; startChat(); }
+    go('chat');
+  };
+}
+
+/* ===== 3. chat ===== */
+function startChat(){
+  const c=S.chat; c.bookTitle=S.book.title;
+  const third = S.book.status==='まだ途中' ? `『${S.book.title}』について、読んだところまでで考えてみよう。` : `『${S.book.title}』のこと、一つずつ思い出していこう。`;
+  aiSay({who:'ai',ack:`こんにちは。本の案内役の「しおり」だよ。${third}`});
+  c.qAt[0]=c.log.length; aiSay({who:'ai',q:QUESTIONS[0],qi:0});
+}
+function aiSay(m){
+  S.chat.log.push(m);
+  if(m.qi!=null) qShownAt[m.qi]=Date.now();
+  const text=[m.ack,m.q,m.tail].filter(Boolean).join(' ')+(m.chips?`\n［選択肢］${m.chips.join('／')}`:'');
+  logEv('ai',{qi:'qi' in m?m.qi:S.chat.q,text});
+  autoSpeak([m.ack,m.q,m.tail].filter(Boolean).join(' '));
+}
+function ackFor(q,t){
+  switch(q){
+    case 0: return 'その場面が強く心にのこったんだね。';
+    case 1: return /けれど|けど|でも|少し|すこし|ながら|ちょっと/.test(t)?'二つの気持ちがまざっていたことに気づけたね。':'そのときの気持ちを、言葉にできたね。';
+    case 2: return /自分|わたし|ぼく|私|僕|うち/.test(t)?'自分だったらどうするかを考えられたね。':'気持ちのわけを考えられたね。';
+    case 3: return /「|言った|いった|言葉|ことば|せりふ/.test(t)?'本の中の言葉を手がかりにできたね。':'本の中から手がかりを見つけられたね。';
+    case 4: return /(ない|ありません)$/.test(t.replace(/[。！!]+$/,''))&&!/似て|にて/.test(t)?'思いうかばないことも、正直に考えられたね。':'自分の経験と本をつなげられたね。';
+    default: return '読む前とあとで、自分の考えが動いたことに気づけたね。';
+  }
+}
+function advanceQ(answer){
+  const c=S.chat, q=c.q, ack=ackFor(q,answer);
+  if(q<QUESTIONS.length-1){
+    c.q=q+1; c.qAt[c.q]=c.log.length;
+    aiSay({who:'ai',ack,q:QUESTIONS[c.q],qi:c.q});
+  } else {
+    c.q=QUESTIONS.length; c.done=true;
+    aiSay({who:'ai',ack,tail:'これで、六つの質問はおしまい。話してくれたことを、カードにまとめてみよう。',qi:null});
+  }
+}
+function stageState(){
+  const c=S.chat, cur = c.done?4:Q_STAGE[c.q];
+  return STAGES.map((s,k)=>{
+    if(k<cur) return {s,cls:'done'};
+    if(k===cur){
+      const qs=Q_STAGE.map((v,i)=>v===k?i:-1).filter(i=>i>=0);
+      const p = Math.round((qs.filter(i=>i<c.q).length/qs.length)*100);
+      return {s,cls:'now',p:Math.max(p,12)};
+    }
+    return {s,cls:''};
+  });
+}
+function renderMsg(m,i,last){
+  if(m.who==='me') return `<div class="msg me"><div class="bubble"><span class="who">あなた</span><p>${saidIcon(m)}${esc(m.text)}</p></div></div>`;
+  if(m.who==='sys') return `<div class="msg sys"><p class="hint-text">${esc(m.text)}</p></div>`;
+  if(m.who==='typing') return `<div class="msg ai">${avatar()}<div class="bubble"><span class="who">しおり</span><div class="typing" aria-label="考え中"><i></i><i></i><i></i></div></div></div>`;
+  const chips = m.chips ? `<div class="chips" role="group" aria-label="ヒントのえらびかた">${m.chips.map(ch=>`<button class="chip ${m.picked===ch?'picked':''}" data-chip="${esc(ch)}" data-i="${i}" ${(!last||m.picked)?'disabled':''}>${esc(ch)}</button>`).join('')}</div>`:'';
+  return `<div class="msg ai">${avatar()}<div class="bubble"><span class="who">しおり ${sayBtn([m.ack,m.q,m.tail].filter(Boolean).join(' '))}</span>
+    ${m.ack?`<p class="ack">${esc(m.ack)}</p>`:''}${m.q?`<p class="q">${esc(m.q)}</p>`:''}${m.tail?`<p class="ack">${esc(m.tail)}</p>`:''}${chips}</div></div>`;
+}
+function renderChat(){
+  const c=S.chat, st=stageState(), qn=Math.min(c.q+1,6);
+  const lastIdx=c.log.length-1;
+  const log=[...c.log]; if(c.busy) log.push({who:'typing'});
+  const dock = c.done ? `<div class="dock-in finish">
+      <p style="font-family:var(--font-display);font-weight:700">六つの質問に、ぜんぶ答えられたね。</p>
+      <div class="row" style="justify-content:center">
+        <button class="btn btn-ghost" id="backQ">前の質問にもどる</button>
+        <button class="btn btn-accent btn-lg" id="toOrganize">考えを整理する</button>
+      </div></div>`
+    : `<div class="dock-in">
+      <label for="chatInput" class="sr-only">あなたの答え</label>
+      <textarea class="textarea ${c.err?'bad':''}" id="chatInput" rows="2" placeholder="思ったことを、一言でも書いてみよう" ${c.busy?'disabled':''} ${c.typing?'':'hidden'}>${esc(c.draft)}</textarea>
+      ${c.err?`<p class="err" role="alert">${esc(c.err)}</p>`:''}
+      <div class="dock-row">
+        <div class="grp">
+          ${micBtn('chat','#chatInput',c.busy?'disabled':'',c.typing?'btn-soft btn-sm':'btn-primary')}
+          ${c.typing?'':`<button class="btn btn-ghost btn-sm kbd" id="typeOpen" ${c.busy?'disabled':''}>${KEY_SVG}<span>手で入力する</span></button>`}
+          <button class="btn btn-soft btn-sm" id="stuck" ${c.busy?'disabled':''}>思いつかない</button>
+        </div>
+        ${c.typing?`<button class="btn btn-primary" id="send" ${c.busy?'disabled':''}>送る</button>`:''}
+      </div>
+      <div class="dock-row">
+        <div class="grp">
+          <button class="btn btn-quiet btn-sm" id="backQ" ${c.q===0||c.busy?'disabled':''}>前の質問にもどる</button>
+          <button class="btn btn-quiet btn-sm" id="pause">今日はここまで</button>
+        </div>
+        <div class="demo">体験用：<button class="btn" id="fillDummy" ${c.busy?'disabled':''}>回答例を入れる</button></div>
+      </div>
+    </div>`;
+  return `<section class="wrap screen" style="max-width:820px;padding-bottom:0">
+    <div class="chat-head">
+      <div class="book-line"><div class="spine" aria-hidden="true"></div><div><span class="hint-text">いま考えている本</span><br><strong>『${esc(S.book.title)}』</strong></div></div>
+      <ol class="stages" aria-label="考えるステップ">${st.map(x=>`<li class="${x.cls}" style="${x.p?`--p:${x.p}%`:''}" ${x.cls==='now'?'aria-current="step"':''}>${x.s}</li>`).join('')}</ol>
+      <div class="row between"><p class="qcount">${c.done?'質問 6 / 6 おわり':`質問 ${qn} / 6`}</p>${ttsToggle()}</div>
+      <p class="hint-text">名前・学校名・住所・電話番号は書かないでね。</p>
+    </div>
+    <div class="log" id="log" aria-live="polite">${log.map((m,i)=>renderMsg(m,i,i===lastIdx)).join('')}</div>
+    <div class="dock">${dock}</div>
+  </section>`;
+}
+function bindChat(){
+  const c=S.chat, inp=$('#chatInput');
+  requestAnimationFrame(()=>window.scrollTo(0,document.documentElement.scrollHeight));
+  if(c.done){
+    $('#toOrganize').onclick=()=>go('organize');
+    $('#backQ').onclick=backQuestion;
+    return;
+  }
+  if(inp){
+    inp.oninput=()=>{c.draft=inp.value; markTyped('chat');};
+    inp.onkeydown=e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)&&!e.isComposing){e.preventDefault();send();}};
+    if(c.typing && !c.busy && matchMedia('(pointer:fine)').matches) inp.focus({preventScroll:true});
+  }
+  if($('#send')) $('#send').onclick=()=>send();
+  if($('#typeOpen')) $('#typeOpen').onclick=()=>{ c.typing=true; logEv('type_open',{qi:c.q}); render(); $('#chatInput')?.focus({preventScroll:true}); };
+  $('#stuck').onclick=stuck;
+  $('#backQ').onclick=backQuestion;
+  $('#pause').onclick=quit;
+  $('#fillDummy').onclick=()=>{c.draft=DUMMY[c.q]||'';c.err='';c.typing=true;logEv('demo',{qi:c.q,text:'回答例を入れた'});render();};
+  $$('.chip').forEach(b=>b.onclick=()=>pickChip(+b.dataset.i,b.dataset.chip));
+}
+function aiReply(fn){
+  const c=S.chat; c.busy=true; render();
+  setTimeout(()=>{c.busy=false; fn(); render();}, reduceMotion?150:750);
+}
+function send(){
+  if(VOICE.rec&&VOICE.hidden&&VOICE.key==='chat'){ stopVoice(); return; }   // finish listening; the spoken answer is sent when it ends
+  stopVoice(true);
+  const c=S.chat, t=(c.draft||'').trim(), voice=voiceSent;
+  if(!t){c.err='まだ何も書かれていないよ。思いついたことを、一言でも書いてみよう。';render();$('#chatInput')?.focus();return;}
+  c.err='';
+  const wait=qShownAt[c.q]?Math.round((Date.now()-qShownAt[c.q])/100)/10:'';
+  if(GHOST_RE.test(t)){ c.log.push({who:'me',text:t,voice}); logEv('ghost',{qi:c.q,text:t,wait,chars:countChars(t),input:takeHow('chat')}); c.draft=''; aiReply(()=>aiSay({who:'ai',ack:REFUSAL})); return; }
+  if(PRIV_RE.test(t)){ logEv('privacy',{qi:c.q,text:NO_TEXT}); if(voice){ c.draft=''; c.err='名前や学校名、住所、電話番号は言わなくて大丈夫だよ。もう一度話してね。'; } else c.err=PRIVACY; render(); return; }
+  c.log.push({who:'me',text:t,voice}); c.answers[c.q]=t; c.draft='';
+  logEv('answer',{qi:c.q,text:t,wait,chars:countChars(t),input:takeHow('chat')});
+  aiReply(()=>advanceQ(t));
+}
+function stuck(){
+  const c=S.chat, s=STUCK[c.q];
+  c.err='';
+  logEv('stuck',{qi:c.q});
+  aiReply(()=>aiSay({who:'ai',ack:'だいじょうぶ、ゆっくり考えよう。近いものはあるかな？',chips:s.chips}));
+}
+function pickChip(i,ch){
+  const c=S.chat, m=c.log[i]; if(!m) return; m.picked=ch;
+  c.log.push({who:'me',text:`「${ch}」かな`});
+  logEv('chip',{qi:c.q,text:ch});
+  const follow = (c.q===4&&ch==='思いうかばない') ? '思いうかばなくても大丈夫。もし自分が主人公だったら、どうしたと思う？' : `「${ch}」を手がかりに考えてみよう。${STUCK[c.q].follow}`;
+  aiReply(()=>aiSay({who:'ai',ack:follow}));
+}
+function backQuestion(){
+  const c=S.chat; if(c.q===0) return;
+  const target=c.q-1;
+  logEv('back',{qi:target,text:`${c.done?'おわり':'質問'+(c.q+1)}から質問${target+1}へ。前の答え：${c.answers[target]||'（なし）'}`});
+  qShownAt[target]=Date.now();
+  c.log=c.log.slice(0,c.qAt[target]+1);
+  c.draft=c.answers[target]||''; c.answers.length=target; c.q=target; c.done=false; c.err='';
+  c.log.push({who:'sys',text:'前の質問にもどったよ。答えを書きなおせるよ。'});
+  render();
+}
+
+/* ===== 4. organize ===== */
+function buildCards(){
+  const key=JSON.stringify(S.chat.answers);
+  if(S.cardsFrom===key) return;
+  S.cardsFrom=key; S.cards={};
+  CARD_DEFS.forEach((d,i)=>S.cards[d.key]=S.chat.answers[i]||'');
+}
+const cardLabel = k=>CARD_DEFS.find(d=>d.key===k).label;
+function renderOrganize(){
+  buildCards();
+  const n=S.order.length;
+  return `<section class="wrap screen stack" style="max-width:820px">
+    <div class="ask-head">${avatar()}<div class="stack" style="gap:6px">
+      <h1>このまとめで、あなたの考えと合っている？</h1>
+      <p class="lead">話してくれたことを、6まいのカードに分けたよ。ちがうところは、書きなおしてね。</p>
+    </div></div>
+    <p class="hint-text">左の「つまみ」を動かすか、上下の矢印で、カードの順番をかえられるよ。</p>
+    <ol class="cards" id="cards">
+      ${S.order.map((k,i)=>{
+        const editing=S.editing===k;
+        return `<li class="mcard" data-key="${k}">
+          <button class="handle" aria-label="${cardLabel(k)}を動かす" title="ドラッグしてならべかえ"><span class="num">${i+1}</span><span class="grip" aria-hidden="true"></span></button>
+          <div style="min-width:0">
+            <h3>${cardLabel(k)}</h3>
+            ${editing?'':`<p class="words ${S.cards[k]?'':'empty'}">${S.cards[k]?esc(S.cards[k]):'まだ書かれていないよ'}</p>`}
+          </div>
+          <div class="side">
+            ${editing?'':`<button class="btn btn-ghost btn-sm" data-edit="${k}">書きなおす</button>`}
+            <div class="arrows">
+              <button class="icon-btn" data-move="-1" data-k="${k}" aria-label="${cardLabel(k)}を上へ" ${i===0?'disabled':''}>${UP_SVG}</button>
+              <button class="icon-btn" data-move="1" data-k="${k}" aria-label="${cardLabel(k)}を下へ" ${i===n-1?'disabled':''}>${DOWN_SVG}</button>
+            </div>
+          </div>
+          ${editing?`<div class="edit-area">
+            <label class="sr-only" for="edit-${k}">${cardLabel(k)}</label>
+            <textarea class="textarea ${S.editErr?'bad':''}" id="edit-${k}" rows="2">${esc(S.editDraft??S.cards[k])}</textarea>
+            ${S.editErr?`<p class="err" role="alert">${esc(S.editErr)}</p>`:''}
+            <div class="row end"><button class="btn btn-quiet btn-sm" id="editCancel">やめる</button><button class="btn btn-primary btn-sm" id="editSave">このことばにする</button></div>
+          </div>`:''}
+        </li>`;}).join('')}
+    </ol>
+    <div class="row between">
+      <button class="btn btn-ghost" id="orgBack">AIとの話にもどる</button>
+      <button class="btn btn-accent btn-lg" id="orgOk" ${S.editing?'disabled':''}>これで合っている</button>
+    </div>
+  </section>`;
+}
+function bindOrganize(){
+  $$('[data-edit]').forEach(b=>b.onclick=()=>{S.editing=b.dataset.edit;S.editDraft=null;S.editErr='';render();$(`#edit-${S.editing}`)?.focus();});
+  if(S.editing){
+    const ta=$(`#edit-${S.editing}`);
+    ta.oninput=()=>S.editDraft=ta.value;
+    $('#editCancel').onclick=()=>{S.editing=null;S.editErr='';render();};
+    $('#editSave').onclick=()=>{
+      const v=ta.value.trim();
+      if(!v){S.editErr='からっぽだと、まとめにならないよ。一言でも書いてみよう。';S.editDraft=ta.value;render();$(`#edit-${S.editing}`)?.focus();return;}
+      if(PRIV_RE.test(v)){logEv('privacy',{block:cardLabel(S.editing),text:NO_TEXT});S.editErr='名前や学校名、住所、電話番号は書かないでね。';S.editDraft=ta.value;render();return;}
+      if(v!==S.cards[S.editing]) logEv('card_edit',{block:cardLabel(S.editing),text:`前：${S.cards[S.editing]||'（なし）'}\n後：${v}`,chars:countChars(v)});
+      S.cards[S.editing]=v; const k=S.editing; S.editing=null; S.editErr=''; render(); toast(`「${cardLabel(k)}」を書きなおしたよ`);
+    };
+  }
+  $$('[data-move]').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k, i=S.order.indexOf(k), j=i+(+b.dataset.move);
+    if(j<0||j>=S.order.length) return;
+    [S.order[i],S.order[j]]=[S.order[j],S.order[i]]; logOrder(); render();
+    $(`[data-k="${k}"][data-move="${b.dataset.move}"]`)?.focus();
+  });
+  $('#orgBack').onclick=()=>go('chat');
+  $('#orgOk').onclick=()=>go('compose');
+  enableDrag($('#cards'));
+}
+function enableDrag(list){
+  $$('.handle',list).forEach(h=>{
+    let card=null;
+    h.addEventListener('pointerdown',e=>{
+      if(e.button!==0) return;
+      card=h.closest('.mcard'); card.classList.add('dragging');
+      h.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    h.addEventListener('pointermove',e=>{
+      if(!card) return;
+      const others=[...list.children].filter(c=>c!==card);
+      const after=others.find(c=>{const r=c.getBoundingClientRect();return e.clientY<r.top+r.height/2;});
+      if(after!==card.nextElementSibling) list.insertBefore(card,after||null);
+      [...list.children].forEach((c,i)=>{const n=$('.num',c); if(n) n.textContent=i+1;});
+    });
+    const end=()=>{
+      if(!card) return;
+      card.classList.remove('dragging'); card=null;
+      const newOrder=[...list.children].map(c=>c.dataset.key);
+      if(newOrder.join()!==S.order.join()){S.order=newOrder;logOrder();render();toast('順番をかえたよ');}
+    };
+    h.addEventListener('pointerup',end); h.addEventListener('pointercancel',end);
+  });
+}
+function logOrder(){ logEv('card_order',{text:S.order.map(cardLabel).join(' → ')}); }
+
+/* ===== 5. compose ===== */
+function memoList(){
+  const items=S.order.map((k,i)=>`<details class="memo" open><summary><span class="num">${i+1}</span>${cardLabel(k)}</summary><p class="words">${esc(S.cards[k]||'（なし）')}</p></details>`).join('');
+  const reason=S.book.reason?`<details class="memo reason" open><summary><span class="num">＊</span>この本を選んだ理由</summary><p class="words">${esc(S.book.reason)}</p></details>`:'';
+  return reason+items;
+}
+function consultReply(t){
+  if(GHOST_RE.test(t)) return REFUSAL;
+  if(PRIV_RE.test(t)) return PRIVACY;
+  if(/わから|こまって|困って|書けない|かけない|思いつかない|うかばない/.test(t)) return '止まってしまったんだね。左のメモを読んで、このブロックに使えそうなものを一つ選んでみよう。どれにする？';
+  if(/順番|じゅんばん|どこから|なにから|何から/.test(t)) return '場面、気持ち、理由の順にすると、書きやすいことが多いよ。あなたは、どこから書いてみたい？';
+  if(/長さ|文字数|何文字|なんもじ|みじかい|短い|長い/.test(t)) return '長さよりも、あなたの考えが入っているかが大切だよ。あと一文足すなら、何を書きたい？';
+  if(/誤字|まちがい|間違|漢字|かんじ/.test(t)) return 'まず一か所だけ、いっしょに見てみよう。気になる文を一つ教えてくれる？';
+  if(/言葉|ことば|言い方|いいかた|表現/.test(t)) return 'ぴったりの言葉をさがしているんだね。そのときの気持ちを、天気や色にたとえるとどうなる？';
+  return '教えてくれてありがとう。それは、このブロックで伝えたいことに近いかな？ 一つだけ選ぶなら、何を書きたい？';
+}
+function renderCompose(){
+  const total=Object.values(S.essay).reduce((a,s)=>a+countChars(s),0);
+  return `<section class="wrap wide screen" style="padding-bottom:0">
+    <div class="stack" style="gap:6px;margin-bottom:20px">
+      <h1 style="font-size:1.7rem">自分の言葉で書いてみよう</h1>
+      <div class="row between"><p class="lead">メモを見ながら、4つのまとまりに分けて書くよ。どこから書いてもいいよ。</p>${ttsToggle()}</div>
+    </div>
+    <div class="compose">
+      <aside class="memos desktop" aria-label="メモ">
+        <div class="memos-head"><h2>考えのメモ</h2><p class="hint-text">メモは見るだけ。文章は、あなたが書くよ。</p></div>
+        ${memoList()}
+      </aside>
+      <details class="mobile-memos"><summary>考えのメモを見る</summary><div class="memos">${memoList()}</div></details>
+      <div class="blocks">
+        ${BLOCKS.map((b,i)=>{
+          const hi=S.hintIdx[b.key]??0, log=S.consultLog[b.key]||[];
+          return `<article class="card block" id="blk-${b.key}">
+            <div class="block-head"><span class="num">${i+1}</span><div><h3>${b.title}</h3><p>${b.desc}</p></div></div>
+            <label class="sr-only" for="ta-${b.key}">${b.title}の文章</label>
+            <textarea class="textarea" id="ta-${b.key}" data-k="${b.key}" placeholder="ここに、あなたの言葉で書こう">${esc(S.essay[b.key])}</textarea>
+            <div class="block-foot">
+              <span class="count" id="cnt-${b.key}"><b>${countChars(S.essay[b.key])}</b> 文字</span>
+              <div class="row">
+                ${micBtn('essay-'+b.key,'#ta-'+b.key)}
+                <button class="btn btn-soft btn-sm" data-hint="${b.key}">ヒントをもらう</button>
+                <button class="btn btn-ghost btn-sm" data-consult="${b.key}" aria-expanded="${!!S.consultOpen[b.key]}">AIに相談する</button>
+              </div>
+            </div>
+            ${S.hintOpen[b.key]?`<div class="helper" aria-live="polite">${avatar()}<div><span class="who">しおりの問いかけ ${sayBtn(b.hints[hi])}</span><p>${esc(b.hints[hi])}</p>
+              <div class="row"><button class="btn btn-quiet btn-sm" data-nexthint="${b.key}">ほかの問いかけ</button><button class="btn btn-quiet btn-sm" data-closehint="${b.key}">とじる</button></div></div></div>`:''}
+            ${S.consultOpen[b.key]?`<div class="consult">
+              <div class="consult-log" aria-live="polite">
+                ${log.length?'':`<div class="helper">${avatar()}<div><span class="who">しおり</span><p>「${b.title}」で、こまっていることはある？</p></div></div>`}
+                ${log.map(m=>m.who==='me'?`<div class="mine">${saidIcon(m)}${esc(m.text)}</div>`:`<div class="helper">${avatar()}<div><span class="who">しおり ${sayBtn(m.text)}</span><p>${esc(m.text)}</p></div></div>`).join('')}
+              </div>
+              ${S.consultErr===b.key?'<p class="err" role="alert">相談したいことを、一言書いてね。</p>':''}
+              <div class="row">
+                <label class="sr-only" for="ci-${b.key}">相談したいこと</label>
+                <input class="input" id="ci-${b.key}" placeholder="れい：何から書けばいいかわからない" style="flex:1;min-width:200px" autocomplete="off">
+                ${micBtn('consult-'+b.key,'#ci-'+b.key)}
+                <button class="btn btn-primary btn-sm" data-ask="${b.key}">送る</button>
+              </div>
+            </div>`:''}
+          </article>`;}).join('')}
+        <div class="demo">体験用：<button class="btn" id="fillEssay">子どもが書いた例を入れる</button></div>
+      </div>
+    </div>
+    <div class="bottom-bar"><div class="bottom-in">
+      <p class="paper">ぜんぶで <b id="total">${total}</b> 文字　・　原稿用紙 約 <b id="sheets">${(Math.ceil(total/40)/10).toFixed(1)}</b> 枚分</p>
+      ${S.composeErr?`<p class="err" role="alert" style="flex-basis:100%">${esc(S.composeErr)}</p>`:''}
+      <div class="row"><button class="btn btn-quiet btn-sm" id="cmpPause">今日はここまで</button><button class="btn btn-accent" id="toReflect">ふり返りへ進む</button></div>
+    </div></div>
+  </section>`;
+}
+function bindCompose(){
+  const upd=()=>{
+    const total=Object.values(S.essay).reduce((a,s)=>a+countChars(s),0);
+    $('#total').textContent=total; $('#sheets').textContent=(Math.ceil(total/40)/10).toFixed(1);
+  };
+  $$('textarea[data-k]').forEach(ta=>ta.oninput=()=>{
+    S.essay[ta.dataset.k]=ta.value; $(`#cnt-${ta.dataset.k} b`).textContent=countChars(ta.value); upd(); markTyped('essay-'+ta.dataset.k);
+    if(S.composeErr){S.composeErr='';}
+    clearTimeout(flushEssay._t); flushEssay._t=setTimeout(flushEssay,10000);   // snapshot after 10s without typing
+  });
+  $$('textarea[data-k]').forEach(ta=>ta.onchange=flushEssay);
+  const keep=fn=>()=>{const y=scrollY;fn();render();window.scrollTo(0,y);};
+  const blk=k=>BLOCKS.find(x=>x.key===k);
+  const logHint=k=>{ const h=blk(k).hints[S.hintIdx[k]??0]; logEv('hint',{block:blk(k).title,text:h}); autoSpeak(h); };
+  $$('[data-hint]').forEach(b=>b.onclick=keep(()=>{
+    const k=b.dataset.hint; if(S.hintOpen[k]) S.hintIdx[k]=((S.hintIdx[k]??0)+1)%blk(k).hints.length; S.hintOpen[k]=true; logHint(k);
+  }));
+  $$('[data-nexthint]').forEach(b=>b.onclick=keep(()=>{const k=b.dataset.nexthint;S.hintIdx[k]=((S.hintIdx[k]??0)+1)%3;logHint(k);}));
+  $$('[data-closehint]').forEach(b=>b.onclick=keep(()=>{S.hintOpen[b.dataset.closehint]=false;}));
+  $$('[data-consult]').forEach(b=>b.onclick=()=>{const k=b.dataset.consult;keep(()=>{S.consultOpen[k]=!S.consultOpen[k];})();$(`#ci-${k}`)?.focus({preventScroll:true});});
+  $$('[data-ask]').forEach(b=>{
+    const k=b.dataset.ask, inp=$(`#ci-${k}`);
+    inp.oninput=()=>markTyped('consult-'+k);
+    const ask=()=>{
+      if(VOICE.rec&&VOICE.hidden&&VOICE.key==='consult-'+k){ stopVoice(); return; }
+      stopVoice(true);
+      const t=inp.value.trim(), voice=voiceSent;
+      if(!t){keep(()=>{S.consultErr=k;})();$(`#ci-${k}`)?.focus({preventScroll:true});return;}
+      S.consultErr=null;
+      const reply=consultReply(t);
+      (S.consultLog[k]=S.consultLog[k]||[]).push({who:'me',text:t,voice},{who:'ai',text:reply});
+      logEv(PRIV_RE.test(t)?'privacy':GHOST_RE.test(t)?'ghost':'consult',{block:blk(k).title,text:PRIV_RE.test(t)?NO_TEXT:t,chars:countChars(t),input:takeHow('consult-'+k)});
+      logEv('consult_reply',{block:blk(k).title,text:reply}); autoSpeak(reply);
+      keep(()=>{})(); $(`#ci-${k}`)?.focus({preventScroll:true});
+    };
+    b.onclick=ask;
+    inp.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();ask();}};
+  });
+  $('#fillEssay').onclick=keep(()=>{S.essay={...DEMO_ESSAY};S.composeErr='';logEv('demo',{text:'子どもが書いた例を入れた'});flushEssay();});
+  $('#cmpPause').onclick=quit;
+  $('#toReflect').onclick=()=>{
+    const total=Object.values(S.essay).reduce((a,s)=>a+countChars(s),0);
+    if(!total){S.composeErr='まだ文章が書かれていないよ。どれか一つのまとまりから、書いてみよう。';const y=scrollY;render();window.scrollTo(0,y);return;}
+    if(PRIV_RE.test(Object.values(S.essay).join(''))){logEv('privacy',{text:'感想文に個人情報らしい言葉があり、ふり返りへ進むのを止めた'});S.composeErr='名前や学校名、住所、電話番号が入っていないか、たしかめてね。';const y=scrollY;render();window.scrollTo(0,y);return;}
+    S.composeErr=''; go('reflect');
+  };
+}
+
+/* ===== 6. reflect ===== */
+function faceSvg(level){
+  const mouths=['M15 32q9-6 18 0','M15 31q9-3 18 0','M15 30h18','M15 28q9 5 18 0','M14 27q10 10 20 0'];
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="var(--surface)" stroke="var(--teal)" stroke-width="2.5"/>
+    <circle cx="17" cy="20" r="2.6" fill="var(--teal-ink)"/><circle cx="31" cy="20" r="2.6" fill="var(--teal-ink)"/>
+    ${level>=3?'<circle cx="12.5" cy="27" r="2.6" fill="var(--accent)" opacity=".7"/><circle cx="35.5" cy="27" r="2.6" fill="var(--accent)" opacity=".7"/>':''}
+    <path d="${mouths[level]}" fill="none" stroke="var(--teal-ink)" stroke-width="2.6" stroke-linecap="round"/></svg>`;
+}
+function renderReflect(){
+  const allDone=EVALS.every((_,i)=>S.evals[i]!=null);
+  return `<section class="wrap screen stack" style="max-width:820px;gap:24px">
+    <div class="ask-head">${avatar()}<div class="stack" style="gap:6px">
+      <p class="eyebrow">ふり返り</p>
+      <h1 style="font-size:1.7rem">今日の取り組みを、ふり返ろう</h1>
+      <p class="lead">点数はつけないよ。あなたがやってみたことを見ていこう。</p>
+    </div></div>
+    <section class="card stack" style="gap:14px" aria-labelledby="goodH">
+      <h2 id="goodH" style="font-size:1.15rem">よかったところ</h2>
+      <ul class="good-list">${GOOD_POINTS.map(g=>`<li>${CHECK_SVG}<span>${esc(g)}</span></li>`).join('')}</ul>
+    </section>
+    <section class="stack" style="gap:10px" aria-labelledby="tipH">
+      <h2 id="tipH" style="font-size:1.15rem">つぎにためすなら（一つだけ）</h2>
+      <div class="next-tip" aria-live="polite">${avatar()}<div><p>${esc(NEXT_TIPS[S.tipIdx])}</p>
+        <div class="row" style="margin-top:8px"><button class="btn btn-quiet btn-sm" id="nextTip">ほかの提案にする</button></div></div></div>
+    </section>
+    <section class="card stack" style="gap:18px" aria-labelledby="evalH">
+      <div><h2 id="evalH" style="font-size:1.15rem">自分でふり返ろう</h2><p class="hint-text">いちばん近い顔をえらんでね。正しい答えはないよ。</p></div>
+      <div class="evals">${EVALS.map((q,i)=>`<div class="eval"><fieldset><legend>${q}</legend><div class="faces">
+        ${FACE_LABELS.map((l,v)=>`<div class="face"><input type="radio" name="ev${i}" id="ev${i}-${v}" value="${v}" ${S.evals[i]===v?'checked':''}><label for="ev${i}-${v}">${faceSvg(v)}${l}</label></div>`).join('')}
+      </div></fieldset></div>`).join('')}</div>
+      ${allDone?'<p class="note" style="background:var(--teal-soft);color:var(--teal-ink)">自分の取り組みを、ていねいにふり返れたね。</p>':''}
+    </section>
+    <details class="plain"><summary>書いた文章を見る</summary>
+      <div class="essay-view">${BLOCKS.map(b=>`<h4>${b.title}</h4>${esc(S.essay[b.key]||'（まだ書いていない）')}`).join('\n')}</div>
+    </details>
+    <div class="final">
+      <svg viewBox="0 0 70 88" aria-hidden="true"><path d="M8 8a8 8 0 0 1 8-8h38a8 8 0 0 1 8 8v80L35 70 8 88z" fill="var(--accent)"/><circle cx="26" cy="30" r="3.4" fill="var(--on-accent)"/><circle cx="44" cy="30" r="3.4" fill="var(--on-accent)"/><path d="M27 41q8 7 16 0" stroke="var(--on-accent)" stroke-width="3.2" fill="none" stroke-linecap="round"/></svg>
+      <div><h2>あなたにしか書けない感想ができました</h2><p>『${esc(S.book.title)}』を読んで感じたことは、あなただけのものだよ。</p></div>
+    </div>
+    <div class="row between">
+      <button class="btn btn-ghost btn-lg" id="rewrite">書きなおす</button>
+      <button class="btn btn-primary btn-lg" id="finish">今回はここまで</button>
+    </div>
+    <p class="research-link"><button class="btn btn-quiet" id="toLog">研究者用：記録と設定</button></p>
+  </section>`;
+}
+function bindReflect(){
+  $('#nextTip').onclick=()=>{S.tipIdx=(S.tipIdx+1)%NEXT_TIPS.length;logEv('tip',{text:NEXT_TIPS[S.tipIdx]});const y=scrollY;render();window.scrollTo(0,y);$('#nextTip').focus({preventScroll:true});};
+  $$('.face input').forEach(r=>r.onchange=()=>{
+    const i=+r.name.slice(2); const first=S.evals[i]==null; S.evals[i]=+r.value;
+    logEv('eval',{text:`${EVALS[i]}：${FACE_LABELS[+r.value]}（${+r.value+1}/5）`});
+    const all=EVALS.every((_,k)=>S.evals[k]!=null);
+    if(all&&first){const y=scrollY;render();window.scrollTo(0,y);$(`#${r.id}`)?.focus({preventScroll:true});}
+  });
+  $('#rewrite').onclick=()=>go('compose');
+  $('#toLog').onclick=()=>go('log');
+  $('#finish').onclick=()=>{logEv('finish');go('home');toast('おつかれさま。また読みたい本が見つかるといいね');};
+}
+
+/* ===== 7. research log viewer (研究者用) ===== */
+function logTable(r){
+  return `<div class="log-table-wrap"><table class="log-table">
+    <thead><tr><th>時刻</th><th>経過</th><th>画面</th><th>できごと</th><th>質問</th><th>内容</th><th>回答まで</th><th>文字数</th><th>入力</th></tr></thead>
+    <tbody>${r.events.map(e=>`<tr class="k-${e.type}">
+      <td class="c-num">${fmtTime(e.time).slice(11)}</td><td class="c-num">${e.sec}秒</td>
+      <td>${esc(SCREEN_LABEL[e.screen]||e.screen)}</td><td>${esc(EV_LABEL[e.type]||e.type)}</td>
+      <td class="c-num">${e.qi==null?'':'Q'+(e.qi+1)}</td>
+      <td class="c-txt">${e.block?`<span class="pill">${esc(e.block)}</span> `:''}${esc(e.text||'')}</td>
+      <td class="c-num">${e.wait==null||e.wait===''?'':e.wait+'秒'}</td><td class="c-num">${e.chars??''}</td><td class="c-num">${esc(e.input||'')}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+function voiceSettings(){
+  const vs=[...jaVoices()].sort((a,b)=>voiceRank(a)-voiceRank(b)), cur=pickVoice();
+  return `<section class="card stack" style="gap:16px" aria-labelledby="cfgH">
+    <div><h2 id="cfgH" style="font-size:1.25rem">声の設定</h2><p class="hint-text">この端末のブラウザに保存されます。子どもが使う前に決めておいてください。</p></div>
+    ${SR?`<div class="stack" style="gap:6px">
+      <label class="check"><input type="checkbox" id="cfgShow" ${CFG.showSpoken?'checked':''}><span>チャットと相談で、話している間も入力欄に文字を出す</span></label>
+      <p class="hint-text">オフ（おすすめ）：話している間は文字が出ず、話しおわって2.5秒たつと、そのまま送られます。送ったあと、吹き出しに話した言葉が出ます。<br>オン：話した言葉が入力欄に出て、直してから「送る」を押します。<br>チャットの入力欄は、子どもが「手で入力する」を押したときに出ます。感想文の欄では、声の言葉はいつも文字で出ます。</p>
+    </div>`:'<p class="hint-text">このブラウザは音声入力に対応していません（Chrome・Edge・Safari で使えます）。</p>'}
+    ${TTS_OK?(vs.length?`<div class="row" style="align-items:flex-end">
+      <div class="field" style="flex:1;min-width:220px"><label class="label" for="cfgVoice">しおりの声</label>
+        <select class="input" id="cfgVoice">${vs.map(v=>`<option value="${esc(v.name)}" ${cur&&v.name===cur.name?'selected':''}>${esc(v.name)}${voiceRank(v)<2?'（自然な声）':''}</option>`).join('')}</select></div>
+      <div class="field"><label class="label" for="cfgRate">話す速さ</label>
+        <select class="input" id="cfgRate">${RATES.map(([r,l])=>`<option value="${r}" ${CFG.rate===r?'selected':''}>${l}</option>`).join('')}</select></div>
+      <button type="button" class="btn btn-soft btn-sm tts" id="cfgTry" style="white-space:nowrap">${SPEAK_SVG}<span>ためしに聞く</span></button>
+    </div>
+    <p class="hint-text">「（自然な声）」が付いた声が、なめらかに聞こえます。Edge では「Microsoft Nanami Online (Natural)」、Chrome では「Google 日本語」がおすすめです。</p>`
+      :'<p class="hint-text">このブラウザには、日本語の読み上げの声が見つかりません。</p>'):''}
+  </section>`;
+}
+function renderLog(){
+  const list=allSessions();
+  const open=S.logOpen ?? R?.sessionId ?? list[0]?.sessionId;
+  const n=(r,t)=>r.events.filter(e=>e.type===t).length;
+  const dur=r=>{const s=r.events.at(-1)?.sec||0;return `${Math.floor(s/60)}分${Math.round(s%60)}秒`;};
+  return `<section class="wrap wide screen stack">
+    <div class="stack" style="gap:6px">
+      <p class="eyebrow">研究者用</p>
+      <h1 style="font-size:1.7rem">記録と設定</h1>
+    </div>
+    ${voiceSettings()}
+    <h2 style="font-size:1.25rem;margin-top:8px">やりとりの記録</h2>
+    <p class="lead">子どもが「新しくはじめる」を押すたびに、1件の記録になります。時刻・答え・ボタンの操作・文章の書きなおしが、順番に残ります。</p>
+    ${privacyNote('この記録は、この端末のブラウザの中だけに保存されています。インターネットには送られません。ブラウザのデータを消すと、記録も消えます。')}
+    ${list.length?`<div class="row between">
+        <p class="hint-text">この端末にある記録：${list.length}件</p>
+        <div class="row"><button class="btn btn-quiet btn-sm" id="clearAll">この端末の記録をすべて消す</button><button class="btn btn-primary btn-sm" id="dlAll">すべてCSVでダウンロード</button></div>
+      </div>`:'<p class="card">まだ記録はありません。子どもが「新しくはじめる」から進めると、ここに記録がたまります。</p>'}
+    ${list.map(r=>{
+      const now=R&&r.sessionId===R.sessionId, title=r.final?.book?.title;
+      return `<article class="card sess ${now?'now':''}">
+        <div class="row between">
+          <h2 style="font-size:1.1rem">${esc(r.participantId||'番号なし')}　<span class="pill">${title?`『${esc(title)}』`:'本の登録前'}</span>${now?' <span class="pill">いま記録中</span>':''}</h2>
+          <div class="row">
+            <button class="btn btn-ghost btn-sm" data-view="${r.sessionId}" aria-expanded="${open===r.sessionId}">${open===r.sessionId?'表をとじる':'表を見る'}</button>
+            <button class="btn btn-soft btn-sm" data-csv="${r.sessionId}">CSV</button>
+            <button class="btn btn-soft btn-sm" data-json="${r.sessionId}">JSON</button>
+          </div>
+        </div>
+        <div class="sess-meta">
+          <span>開始 <b>${fmtTime(r.startedAt)}</b></span><span>かかった時間 <b>${dur(r)}</b></span>
+          <span>答え <b>${n(r,'answer')}</b></span><span>思いつかない <b>${n(r,'stuck')}</b></span>
+          <span>前にもどる <b>${n(r,'back')}</b></span><span>代筆の依頼 <b>${n(r,'ghost')}</b></span><span>音声入力 <b>${n(r,'voice')}</b></span><span>読み上げを聞いた <b>${n(r,'listen')}</b></span>
+          <span>体験用ボタン <b>${n(r,'demo')}</b></span>
+        </div>
+        ${open===r.sessionId?logTable(r):''}
+      </article>`;}).join('')}
+  </section>`;
+}
+function bindLog(){
+  const cs=$('#cfgShow'); if(cs) cs.onchange=()=>{ CFG.showSpoken=cs.checked; saveCfg(); };
+  const cv=$('#cfgVoice'); if(cv) cv.onchange=()=>{ CFG.voice=cv.value; saveCfg(); speak('こんにちは。本の案内役の、しおりだよ。',true); };
+  const cr=$('#cfgRate'); if(cr) cr.onchange=()=>{ CFG.rate=+cr.value; saveCfg(); speak('こんにちは。本の案内役の、しおりだよ。',true); };
+  const ct=$('#cfgTry'); if(ct) ct.onclick=()=>speak('こんにちは。本の案内役の、しおりだよ。この本で、いちばん心にのこった場面はどこ？',true);
+  const find=id=>allSessions().find(r=>r.sessionId===id);
+  const stamp=()=>fmtTime(new Date().toISOString()).replace(/[-: ]/g,'').slice(0,12);
+  $$('[data-view]').forEach(b=>b.onclick=()=>{const y=scrollY;S.logOpen=b.getAttribute('aria-expanded')==='true'?'':b.dataset.view;render();window.scrollTo(0,y);});
+  $$('[data-csv]').forEach(b=>b.onclick=()=>{const r=find(b.dataset.csv);downloadCsv([r],fileStem(r)+'.csv');});
+  $$('[data-json]').forEach(b=>b.onclick=()=>downloadJson(find(b.dataset.json)));
+  $('#dlAll')&&($('#dlAll').onclick=()=>downloadCsv(allSessions(),`shiori_all_${stamp()}.csv`));
+  $('#clearAll')&&($('#clearAll').onclick=()=>confirmBox({title:'記録をすべて消しますか？',body:'この端末に保存されている記録が、すべてなくなります。元にはもどせません。先にダウンロードしておいてください。',ok:'すべて消す',cancel:'やめる',
+    onOk:()=>{try{localStorage.removeItem(LOG_KEY);}catch{} R=null; S.logOpen=null; render(); toast('記録を消しました');}}));
+}
+
+/* ===== render ===== */
+const SCREENS={home:[renderHome,bindHome],register:[renderRegister,bindRegister],chat:[renderChat,bindChat],organize:[renderOrganize,bindOrganize],compose:[renderCompose,bindCompose],reflect:[renderReflect,bindReflect],log:[renderLog,bindLog]};
+function render(){
+  stopVoice(true);
+  renderTop();
+  const [r,b]=SCREENS[S.screen];
+  $('#main').innerHTML=r();
+  if(render.last===S.screen) $('#main').firstElementChild?.classList.remove('screen');
+  render.last=S.screen;
+  b(); bindVoice();
+}
+render();
+</script>
+</body>
+</html>
