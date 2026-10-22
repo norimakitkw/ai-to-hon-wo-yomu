@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="本を読んで感じたことを、いっしょに言葉にしよう。AIと対話しながら、自分の言葉で読書感想文を書くための学習支援ツール（プロトタイプ）。">
 <meta name="theme-color" content="#FFF8EA">
-<meta property="og:title" content="ことばのしおり">
+<meta property="og:title" content="AIと本を読む">
 <meta property="og:description" content="本を読んで感じたことを、いっしょに言葉にしよう">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M13 6a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v38l-11-7-11 7z' fill='%2316807A'/%3E%3Ccircle cx='19.5' cy='17' r='2.3' fill='%23fff'/%3E%3Ccircle cx='28.5' cy='17' r='2.3' fill='%23fff'/%3E%3Cpath d='M20 23.5q4 3.6 8 0' stroke='%23fff' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-<title>ことばのしおり</title>
+<title>AIと本を読む</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
@@ -681,7 +681,7 @@ function quit(){
 /* ===== top bar ===== */
 function renderTop(){
   const i = FLOW.findIndex(f=>f.id===S.screen);
-  const brand = `<button class="brand" id="toHome" aria-label="ホームへ">${GUIDE_SVG}<span>ことばのしおり</span></button>`;
+  const brand = `<button class="brand" id="toHome" aria-label="ホームへ">${GUIDE_SVG}<span>AIと本を読む</span></button>`;
   if(S.screen==='home'){ $('#topbar').innerHTML=`<div class="topbar-in">${brand}</div>`; $('#toHome').onclick=()=>{}; return; }
   if(S.screen==='log'){
     $('#topbar').innerHTML=`<div class="topbar-in">${brand}<div class="top-actions"><button class="btn btn-ghost" id="topBack">もどる</button></div></div>`;
@@ -712,7 +712,7 @@ function renderHome(){
         <svg viewBox="0 0 150 190"><rect x="8" y="22" width="134" height="160" rx="16" fill="var(--surface)" stroke="var(--line)" stroke-width="2"/><path d="M28 60h94M28 84h94M28 108h70M28 132h84" stroke="var(--line)" stroke-width="5" stroke-linecap="round"/><path d="M96 6a6 6 0 0 1 6-6h22a6 6 0 0 1 6 6v96l-17-11-17 11z" fill="var(--teal)"/><circle cx="106" cy="40" r="3.4" fill="var(--surface)"/><circle cx="120" cy="40" r="3.4" fill="var(--surface)"/><path d="M107 50q6 5 12 0" stroke="var(--surface)" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="102" cy="48" r="2.6" fill="var(--accent)"/><circle cx="124" cy="48" r="2.6" fill="var(--accent)"/></svg>
       </div>
       <div>
-        <h1 class="logo">ことばのしおり</h1>
+        <h1 class="logo">AIと本を読む</h1>
         <p class="sub">本を読んで感じたことを、いっしょに言葉にしよう</p>
         <div class="row">
           <button class="btn btn-primary btn-lg" id="btnNew">新しくはじめる</button>
