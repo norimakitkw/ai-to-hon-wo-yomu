@@ -449,7 +449,7 @@ const S = {
   screen:'home',
   hasSession:false,
   book:{grade:'',title:'',author:'',status:'',reason:''},
-  chat:{q:0,answers:[],log:[],qAt:[],done:false,busy:false,draft:'',err:''},
+  chat:{q:0,answers:[],log:[],qAt:[],fu:{},done:false,busy:false,draft:'',err:''},
   cards:{}, order:CARD_DEFS.map(c=>c.key), cardsFrom:'',
   essay:{intro:'',impress:'',think:'',end:''},
   hintIdx:{}, hintOpen:{}, consultOpen:{}, consultLog:{},
@@ -473,7 +473,9 @@ const EV_LABEL = {
   demo:'体験用ボタン', card_edit:'カードを書きなおした', card_order:'カードの順番をかえた',
   hint:'ヒントを見た', consult:'AIに相談（子ども）', consult_reply:'AIに相談（しおり）', essay:'文章を書いた・直した',
   eval:'自己評価', tip:'つぎの提案をかえた', pause:'途中でやめた', finish:'おわり',
-  voice:'音声入力（聞き取った言葉）', listen:'読み上げを聞いた', setting:'設定の変更', type_open:'手で入力をひらいた'
+  voice:'音声入力（聞き取った言葉）', listen:'読み上げを聞いた', setting:'設定の変更', type_open:'手で入力をひらいた',
+  followup:'しおりの問い返し（AI）', fu_answer:'問い返しへの答え', ai_pass:'AIが問い返さなかった',
+  ai_check:'AIの言い回しを直させた', ai_skip:'AIの問い返しを使わなかった', ai_error:'AIの呼び出し失敗'
 };
 const SCREEN_LABEL = {home:'ホーム',log:'研究者用',...Object.fromEntries(FLOW.map(f=>[f.id,f.label]))};
 const URL_ID = (new URLSearchParams(location.search).get('id')||'').slice(0,20);
@@ -620,10 +622,10 @@ function speak(text,now){
   const v=pickVoice(); if(v) u.voice=v;
   speechSynthesis.speak(u);
 }
-if(TTS_OK) speechSynthesis.onvoiceschanged=()=>{ if(S.screen==='log'&&document.activeElement?.id!=='cfgVoice') render(); };
+if(TTS_OK) speechSynthesis.onvoiceschanged=()=>{ if(S.screen==='log'&&!['cfgVoice','aiKey','aiModel'].includes(document.activeElement?.id)) render(); };
 const autoSpeak = text=>{ if(ttsOn&&!ttsMute) speak(text); };
 const ttsToggle = ()=>TTS_OK?`<button type="button" class="btn btn-ghost btn-sm tts" id="ttsToggle" aria-pressed="${ttsOn}">${SPEAK_SVG}<span>よみあげ ${ttsOn?'ON':'OFF'}</span></button>`:'';
-const settingText = ()=>`よみあげ：${ttsOn?'ON':'OFF'}／声：${pickVoice()?.name||'なし'}／速さ：${RATES.find(r=>r[0]===CFG.rate)?.[1]||CFG.rate}／話している間の文字：${CFG.showSpoken?'出す':'出さない'}`;
+const settingText = ()=>`よみあげ：${ttsOn?'ON':'OFF'}／声：${pickVoice()?.name||'なし'}／速さ：${RATES.find(r=>r[0]===CFG.rate)?.[1]||CFG.rate}／話している間の文字：${CFG.showSpoken?'出す':'出さない'}／AIの問い返し：${aiReady()?`ON（${AI.model}）`:'OFF'}`;
 function bindVoice(){
   $$('[data-mic]').forEach(btn=>btn.onclick=()=>{
     if(VOICE.btn===btn){ stopVoice(); return; }
@@ -639,6 +641,93 @@ function bindVoice(){
     t.setAttribute('aria-pressed',ttsOn); t.querySelector('span').textContent=`よみあげ ${ttsOn?'ON':'OFF'}`;
     logEv('setting',{text:`よみあげを${ttsOn?'ON':'OFF'}にした`});
   };
+}
+
+/* ===== AI follow-up (OpenAI; the key stays in this browser and never goes into the log) ===== */
+const AI_STORE = 'shiori-ai';
+const AI = {key:'', model:'', on:false, models:[]};
+try{ Object.assign(AI,JSON.parse(localStorage.getItem(AI_STORE)||'{}')); }catch{}
+const saveAi = ()=>{ try{ localStorage.setItem(AI_STORE,JSON.stringify(AI)); }catch{} };
+const aiReady = ()=>!!(AI.on&&AI.key&&AI.model);
+const chatModel = id=>/^(gpt-|o\d)/.test(id) && !/audio|realtime|transcribe|tts|image|search|embed|moderation|instruct|codex|-\d{4}-\d{2}-\d{2}$/.test(id);
+async function openai(path,body){
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),20000);
+  try{
+    const res=await fetch('https://api.openai.com/v1/'+path,{method:body?'POST':'GET',signal:ctl.signal,
+      headers:{'Authorization':'Bearer '+AI.key,...(body?{'Content-Type':'application/json'}:{})},body:body&&JSON.stringify(body)});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(j.error?.message||'HTTP '+res.status);
+    return j;
+  }catch(e){ throw e.name==='AbortError'?new Error('時間切れ（20秒）'):e; }
+  finally{ clearTimeout(t); }
+}
+const askJson = async msgs=>JSON.parse((await openai('chat/completions',{model:AI.model,messages:msgs,response_format:{type:'json_object'}})).choices?.[0]?.message?.content||'{}');
+
+// しおりの話し方は natural-japanese スキル（MIT License, coji）の禁止語と読みやすさの原則を、子ども向けの短い問い返しに合わせて絞ったもの
+const fuSystem = grade=>`あなたは、小学生が読書感想文の材料を集めるのを手伝う案内役「しおり」です。
+子どもは本について6つの質問に順番に答えています。あなたが決めるのは、いまの答えに一度だけ聞き返すかどうかと、聞き返すときの言葉です。
+
+## 聞き返すとき
+- 答えが短く、中身がつかめないとき（例：「たのしかった」「ぜんぶ」「ふつう」だけ）
+- 答えが質問とずれているとき
+
+## 聞き返さないとき
+- 場面・気持ち・理由のどれかが、具体的に書いてあるとき
+- 「ない」「わからない」「思いうかばない」と答えたとき。無理に引き出さない
+- 聞き返すと、家族や友だちなど身の回りのことを、もっとくわしく話させることになるとき
+
+## 聞き返す言葉の決まり
+- 子どもの言葉を短く受け止めてから、問いを一つだけ書く。2文まで、50字くらいまで。
+- 問いは答えの形が決まっていない聞き方にする（「どんな」「どうして」「どこで」など）。答えの候補を出したり、「〜だったんじゃない？」と先回りしたりしない。
+- ほめない。点数をつけない。正しいかどうかを判定しない。
+- 子どもが言っていないことを、言ったことにしない。感想文の文を代わりに書かない。
+- 名前・学校名・住所・電話番号は聞かない。
+- ${grade||'小学4〜6年生'}が読んでわかる言葉で書く。習っていないかもしれない漢字は、ひらがなにする。
+- 一つの文には一つのことだけを書く。打ち消しを重ねない。
+- 「〜だね」「〜かな？」のような話し言葉で書き、最後は「？」で終える。
+- 「〜と言えるね」「〜ではないでしょうか」「大切なのは」「ポイントは」「さて」「それでは」「実は」「ぜひ」「すばらしい」「すてき」のような、決まり文句や大げさな言い方は使わない。
+
+## 返す形
+次の形の JSON だけを返す。
+聞き返すとき：{"ask": true, "text": "聞き返す言葉"}
+聞き返さないとき：{"ask": false, "text": ""}
+
+例
+質問「その場面を読んだとき、どんな気持ちになった？」に「たのしかった」
+→ {"ask": true, "text": "たのしかったんだね。どんなところが、いちばんたのしかった？"}
+質問「この本で、いちばん心にのこった場面はどこ？」に「主人公が一人で暗い図書館に入った場面」
+→ {"ask": false, "text": ""}`;
+const fuUser = ({book,answers,q,answer})=>{
+  const prev=answers.slice(0,q).map((a,i)=>`Q${i+1}「${QUESTIONS[i]}」→「${a}」`).join('\n')||'（まだない）';
+  return `本：『${book.title}』（${book.status||'不明'}）\n学年：${book.grade||'不明'}\nこれまでの答え：\n${prev}\n\nいまの質問：Q${q+1}「${QUESTIONS[q]}」\n子どもの答え：「${answer}」`;
+};
+// 検出は機械、判断はAI：引っかかったら理由を添えて一度だけ書き直させる
+const NJ_RULES = [
+  [/と言え(る|ます)|ではないでしょうか|のではないかな|まとめると/,'結論を押しつける言い回し'],
+  [/非常に|大切なのは|大事なのは|ポイントは|言うまでもな/,'強調のしすぎ'],
+  [/さて|それでは|見ていこう|深掘り|掘り下げ/,'中身のない前置き'],
+  [/実は|驚くべき|興味深い|ぜひ/,'演出の言い回し'],
+  [/すばらしい|素晴らしい|すてき|素敵|えらい|上手|すごいね/,'答えをほめて評価している'],
+  [/じゃない[？?]|でしょ[？?]|だよね[？?]/,'答えを先回りして決めつける問い']
+];
+function njCheck(text){
+  const issues=NJ_RULES.flatMap(([re,why])=>{ const m=text.match(re); return m?[`「${m[0]}」は${why}`]:[]; });
+  const sents=text.split(/(?<=[。！？!?])/).map(s=>s.trim()).filter(Boolean);
+  if(countChars(text)>60) issues.push(`長すぎる（${countChars(text)}字。50字くらいまで）`);
+  if(sents.length>2) issues.push(`文が${sents.length}つある（2つまで）`);
+  if((text.match(/[？?]/g)||[]).length!==1||!/[？?]$/.test(text)) issues.push('問いを一つだけにして、最後を「？」で終える');
+  return issues;
+}
+async function askFollowup(ctx){
+  const msgs=[{role:'system',content:fuSystem(ctx.book.grade)},{role:'user',content:fuUser(ctx)}];
+  let out=await askJson(msgs), fixed=null;
+  let text=String(out.text||'').trim(), issues=out.ask===true?njCheck(text):[];
+  if(issues.length){
+    fixed=issues;
+    msgs.push({role:'assistant',content:JSON.stringify(out)},{role:'user',content:`次の点を直して、同じ形の JSON でもう一度返してください。\n- ${issues.join('\n- ')}`});
+    out=await askJson(msgs); text=String(out.text||'').trim(); issues=out.ask===true?njCheck(text):[];
+  }
+  return {ask:out.ask===true&&!!text, text, issues, fixed};
 }
 
 const GUIDE_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 6a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v38l-11-7-11 7z" fill="var(--teal)"/><circle cx="19.5" cy="17" r="2.3" fill="var(--surface)"/><circle cx="28.5" cy="17" r="2.3" fill="var(--surface)"/><path d="M20 23.5q4 3.6 8 0" stroke="var(--surface)" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="16.5" cy="22" r="1.8" fill="var(--accent)" opacity=".8"/><circle cx="31.5" cy="22" r="1.8" fill="var(--accent)" opacity=".8"/></svg>`;
@@ -765,7 +854,7 @@ function resetAll(){
   S.hasSession=false; S.lastScreen=null; S.regErr=null;
   S.pid=URL_ID; R=null; essayLogged={};   // the next event starts a new log session
 }
-function resetChat(){ S.chat={q:0,answers:[],log:[],qAt:[],done:false,busy:false,draft:'',err:''}; qShownAt={}; }
+function resetChat(){ S.chat={q:0,answers:[],log:[],qAt:[],fu:{},done:false,busy:false,draft:'',err:''}; qShownAt={}; }
 function loadDemoProgress(){
   resetAll(); S.book={...EXAMPLE_BOOK};
   logEv('demo',{text:'見本のとちゅうから始めた'});
@@ -856,7 +945,7 @@ function aiSay(m){
   S.chat.log.push(m);
   if(m.qi!=null) qShownAt[m.qi]=Date.now();
   const text=[m.ack,m.q,m.tail].filter(Boolean).join(' ')+(m.chips?`\n［選択肢］${m.chips.join('／')}`:'');
-  logEv('ai',{qi:'qi' in m?m.qi:S.chat.q,text});
+  logEv(m.fu?'followup':'ai',{qi:'qi' in m?m.qi:S.chat.q,text});
   autoSpeak([m.ack,m.q,m.tail].filter(Boolean).join(' '));
 }
 function ackFor(q,t){
@@ -974,9 +1063,30 @@ function send(){
   const wait=qShownAt[c.q]?Math.round((Date.now()-qShownAt[c.q])/100)/10:'';
   if(GHOST_RE.test(t)){ c.log.push({who:'me',text:t,voice}); logEv('ghost',{qi:c.q,text:t,wait,chars:countChars(t),input:takeHow('chat')}); c.draft=''; aiReply(()=>aiSay({who:'ai',ack:REFUSAL})); return; }
   if(PRIV_RE.test(t)){ logEv('privacy',{qi:c.q,text:NO_TEXT}); if(voice){ c.draft=''; c.err='名前や学校名、住所、電話番号は言わなくて大丈夫だよ。もう一度話してね。'; } else c.err=PRIVACY; render(); return; }
-  c.log.push({who:'me',text:t,voice}); c.answers[c.q]=t; c.draft='';
-  logEv('answer',{qi:c.q,text:t,wait,chars:countChars(t),input:takeHow('chat')});
-  aiReply(()=>advanceQ(t));
+  const q=c.q, isFu=c.fu[q]==='asked';
+  c.log.push({who:'me',text:t,voice}); c.answers[q]=isFu?joinAns(c.answers[q],t):t; c.draft='';
+  logEv(isFu?'fu_answer':'answer',{qi:q,text:t,wait,chars:countChars(t),input:takeHow('chat')});
+  if(isFu){ c.fu[q]='done'; aiReply(()=>advanceQ(c.answers[q])); }
+  else if(aiReady()) followUp(q,t);
+  else aiReply(()=>advanceQ(t));
+}
+const joinAns = (a,b)=>a+(/[。！？!?]$/.test(a)?'':'。')+b;
+// asks OpenAI whether to dig into this answer once; on any failure the chat simply moves on as before
+async function followUp(q,answer){
+  const c=S.chat; c.busy=true; render();
+  let r=null;
+  try{ r=await askFollowup({book:S.book,answers:c.answers,q,answer}); }
+  catch(e){ logEv('ai_error',{qi:q,text:String(e.message||e).slice(0,200)}); }
+  if(S.chat!==c) return;   // a new book was started while waiting
+  c.busy=false;
+  if(r?.fixed) logEv('ai_check',{qi:q,text:r.fixed.join('／')});
+  if(r?.ask&&!r.issues.length){ c.fu[q]='asked'; aiSay({who:'ai',q:r.text,qi:q,fu:true}); }
+  else {
+    if(r?.ask) logEv('ai_skip',{qi:q,text:`${r.text}（${r.issues.join('／')}）`});
+    else if(r) logEv('ai_pass',{qi:q});
+    advanceQ(answer);
+  }
+  if(S.screen==='chat') render();
 }
 function stuck(){
   const c=S.chat, s=STUCK[c.q];
@@ -998,6 +1108,7 @@ function backQuestion(){
   qShownAt[target]=Date.now();
   c.log=c.log.slice(0,c.qAt[target]+1);
   c.draft=c.answers[target]||''; c.answers.length=target; c.q=target; c.done=false; c.err='';
+  Object.keys(c.fu).forEach(k=>{ if(+k>=target) delete c.fu[k]; });
   c.log.push({who:'sys',text:'前の質問にもどったよ。答えを書きなおせるよ。'});
   render();
 }
@@ -1307,6 +1418,56 @@ function voiceSettings(){
       :'<p class="hint-text">このブラウザには、日本語の読み上げの声が見つかりません。</p>'):''}
   </section>`;
 }
+function aiSettings(){
+  const busy=S.aiBusy?'disabled':'';
+  return `<section class="card stack" style="gap:16px" aria-labelledby="aiH">
+    <div><h2 id="aiH" style="font-size:1.25rem">AIの問い返し（OpenAI）</h2>
+      <p class="hint-text">オンにすると、チャットで子どもの答えが短いときやあいまいなときに、次の質問へ進む前にAIが一度だけ聞き返します。オフのときや、AIにつながらなかったときは、これまでどおり決まった流れで進みます。</p></div>
+    ${privacyNote('オンのあいだは、個人情報のチェックを通った子どもの答えと、本のタイトル・学年が OpenAI に送られます。APIキーはこの端末のブラウザにだけ保存され、記録やCSVには入りません。')}
+    <div class="row" style="align-items:flex-end">
+      <div class="field" style="flex:1;min-width:240px"><label class="label" for="aiKey">APIキー</label>
+        <input class="input" id="aiKey" type="password" value="${esc(AI.key)}" placeholder="sk-..." autocomplete="off" spellcheck="false"></div>
+      <button type="button" class="btn btn-soft btn-sm" id="aiConnect" ${busy}>つないでモデルを読みこむ</button>
+    </div>
+    ${AI.models.length?`<div class="row" style="align-items:flex-end">
+      <div class="field" style="flex:1;min-width:240px"><label class="label" for="aiModel">モデル</label>
+        <select class="input" id="aiModel">${AI.models.map(id=>`<option value="${esc(id)}" ${id===AI.model?'selected':''}>${esc(id)}</option>`).join('')}</select></div>
+      <button type="button" class="btn btn-soft btn-sm" id="aiTry" ${busy}>ためしに問い返させる</button>
+    </div>
+    <p class="hint-text">「ためしに問い返させる」は、見本の本と「たのしかった」という答えで1回だけ試します。返事までの秒数も出るので、子どもを待たせないモデルを選んでください。</p>`:''}
+    <label class="check"><input type="checkbox" id="aiOn" ${AI.on?'checked':''} ${AI.key&&AI.model?'':'disabled'}><span>チャットでAIの問い返しを使う</span></label>
+    ${S.aiMsg?`<p class="note" role="status" style="white-space:pre-line">${esc(S.aiMsg)}</p>`:''}
+  </section>`;
+}
+async function aiConnect(){
+  AI.key=$('#aiKey').value.trim();
+  if(!AI.key){ AI.on=false; saveAi(); aiStatus('APIキーを入れてください。'); return; }
+  aiStatus('つないでいます…',true);
+  try{
+    const gptFirst=id=>id.startsWith('gpt-')?0:1;
+    AI.models=((await openai('models')).data||[]).map(m=>m.id).filter(chatModel).sort((a,b)=>gptFirst(a)-gptFirst(b)||b.localeCompare(a,'en',{numeric:true}));
+    if(!AI.models.includes(AI.model)) AI.model=AI.models.find(id=>/^gpt-.*-mini$/.test(id))||AI.models[0]||'';
+    S.aiMsg=AI.models.length?`つながりました。チャットに使えそうなモデル：${AI.models.length}件`:'つながりましたが、チャットに使えるモデルが見つかりませんでした。';
+  }catch(e){ AI.models=[]; AI.model=''; AI.on=false; S.aiMsg='つながりませんでした：'+e.message; }
+  saveAi(); aiStatus(S.aiMsg);
+}
+async function aiTry(){
+  aiStatus('ためしています…',true);
+  const t0=Date.now();
+  try{
+    const r=await askFollowup({book:EXAMPLE_BOOK,answers:[DUMMY[0]],q:1,answer:'たのしかった'});
+    const sec=((Date.now()-t0)/1000).toFixed(1);
+    S.aiMsg=r.ask?`問い返し：「${r.text}」（${sec}秒）`:`この答えには問い返さない、という判断でした（${sec}秒）`;
+    if(r.fixed) S.aiMsg+=`\n1回書き直させた点：${r.fixed.join('／')}`;
+    if(r.ask&&r.issues.length) S.aiMsg+=`\n書き直しても残った点：${r.issues.join('／')}（本番では、この問い返しは使わずに次の質問へ進みます）`;
+  }catch(e){ S.aiMsg='うまくいきませんでした：'+e.message; }
+  aiStatus(S.aiMsg);
+}
+function aiStatus(msg,busy=false){
+  S.aiMsg=msg; S.aiBusy=busy;
+  if(S.screen!=='log') return;
+  const y=scrollY; render(); window.scrollTo(0,y);
+}
 function renderLog(){
   const list=allSessions();
   const open=S.logOpen ?? R?.sessionId ?? list[0]?.sessionId;
@@ -1318,9 +1479,10 @@ function renderLog(){
       <h1 style="font-size:1.7rem">記録と設定</h1>
     </div>
     ${voiceSettings()}
+    ${aiSettings()}
     <h2 style="font-size:1.25rem;margin-top:8px">やりとりの記録</h2>
     <p class="lead">子どもが「新しくはじめる」を押すたびに、1件の記録になります。時刻・答え・ボタンの操作・文章の書きなおしが、順番に残ります。</p>
-    ${privacyNote('この記録は、この端末のブラウザの中だけに保存されています。インターネットには送られません。ブラウザのデータを消すと、記録も消えます。')}
+    ${privacyNote('この記録は、この端末のブラウザの中だけに保存されています。記録そのものはインターネットには送られません。ブラウザのデータを消すと、記録も消えます。')}
     ${list.length?`<div class="row between">
         <p class="hint-text">この端末にある記録：${list.length}件</p>
         <div class="row"><button class="btn btn-quiet btn-sm" id="clearAll">この端末の記録をすべて消す</button><button class="btn btn-primary btn-sm" id="dlAll">すべてCSVでダウンロード</button></div>
@@ -1338,7 +1500,7 @@ function renderLog(){
         </div>
         <div class="sess-meta">
           <span>開始 <b>${fmtTime(r.startedAt)}</b></span><span>かかった時間 <b>${dur(r)}</b></span>
-          <span>答え <b>${n(r,'answer')}</b></span><span>思いつかない <b>${n(r,'stuck')}</b></span>
+          <span>答え <b>${n(r,'answer')}</b></span><span>AIの問い返し <b>${n(r,'followup')}</b></span><span>思いつかない <b>${n(r,'stuck')}</b></span>
           <span>前にもどる <b>${n(r,'back')}</b></span><span>代筆の依頼 <b>${n(r,'ghost')}</b></span><span>音声入力 <b>${n(r,'voice')}</b></span><span>読み上げを聞いた <b>${n(r,'listen')}</b></span>
           <span>体験用ボタン <b>${n(r,'demo')}</b></span>
         </div>
@@ -1351,6 +1513,11 @@ function bindLog(){
   const cv=$('#cfgVoice'); if(cv) cv.onchange=()=>{ CFG.voice=cv.value; saveCfg(); speak('こんにちは。本の案内役の、しおりだよ。',true); };
   const cr=$('#cfgRate'); if(cr) cr.onchange=()=>{ CFG.rate=+cr.value; saveCfg(); speak('こんにちは。本の案内役の、しおりだよ。',true); };
   const ct=$('#cfgTry'); if(ct) ct.onclick=()=>speak('こんにちは。本の案内役の、しおりだよ。この本で、いちばん心にのこった場面はどこ？',true);
+  $('#aiKey').oninput=e=>{ AI.key=e.target.value.trim(); saveAi(); };
+  $('#aiConnect').onclick=aiConnect;
+  const am=$('#aiModel'); if(am) am.onchange=()=>{ AI.model=am.value; saveAi(); };
+  const at=$('#aiTry'); if(at) at.onclick=aiTry;
+  $('#aiOn').onchange=e=>{ AI.on=e.target.checked; saveAi(); };
   const find=id=>allSessions().find(r=>r.sessionId===id);
   const stamp=()=>fmtTime(new Date().toISOString()).replace(/[-: ]/g,'').slice(0,12);
   $$('[data-view]').forEach(b=>b.onclick=()=>{const y=scrollY;S.logOpen=b.getAttribute('aria-expanded')==='true'?'':b.dataset.view;render();window.scrollTo(0,y);});
