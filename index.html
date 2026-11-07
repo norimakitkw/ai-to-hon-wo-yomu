@@ -625,7 +625,7 @@ function speak(text,now){
 if(TTS_OK) speechSynthesis.onvoiceschanged=()=>{ if(S.screen==='log'&&!['cfgVoice','aiKey','aiModel'].includes(document.activeElement?.id)) render(); };
 const autoSpeak = text=>{ if(ttsOn&&!ttsMute) speak(text); };
 const ttsToggle = ()=>TTS_OK?`<button type="button" class="btn btn-ghost btn-sm tts" id="ttsToggle" aria-pressed="${ttsOn}">${SPEAK_SVG}<span>よみあげ ${ttsOn?'ON':'OFF'}</span></button>`:'';
-const settingText = ()=>`よみあげ：${ttsOn?'ON':'OFF'}／声：${pickVoice()?.name||'なし'}／速さ：${RATES.find(r=>r[0]===CFG.rate)?.[1]||CFG.rate}／話している間の文字：${CFG.showSpoken?'出す':'出さない'}／AIの問い返し：${aiReady()?`ON（${AI.model}）`:'OFF'}`;
+const settingText = ()=>`よみあげ：${ttsOn?'ON':'OFF'}／声：${pickVoice()?.name||'なし'}／速さ：${RATES.find(r=>r[0]===CFG.rate)?.[1]||CFG.rate}／話している間の文字：${CFG.showSpoken?'出す':'出さない'}／AIの問い返し：${aiReady()?`ON（${PROVIDERS[AI.provider].name}・${aiCur().model}）`:'OFF'}`;
 function bindVoice(){
   $$('[data-mic]').forEach(btn=>btn.onclick=()=>{
     if(VOICE.btn===btn){ stopVoice(); return; }
@@ -643,25 +643,79 @@ function bindVoice(){
   };
 }
 
-/* ===== AI follow-up (OpenAI; the key stays in this browser and never goes into the log) ===== */
+/* ===== AI follow-up (Claude or OpenAI; keys stay in this browser and never go into the log) ===== */
 const AI_STORE = 'shiori-ai';
-const AI = {key:'', model:'', on:false, models:[]};
-try{ Object.assign(AI,JSON.parse(localStorage.getItem(AI_STORE)||'{}')); }catch{}
+const AI = {provider:'anthropic', on:false, anthropic:{key:'',model:'',models:[]}, openai:{key:'',model:'',models:[]}};
+try{
+  const s=JSON.parse(localStorage.getItem(AI_STORE)||'{}');
+  if('key' in s){ s.openai={key:s.key,model:s.model||'',models:s.models||[]}; s.provider='openai'; delete s.key; delete s.model; delete s.models; }   // saved before Claude was added
+  Object.assign(AI,s);
+}catch{}
 const saveAi = ()=>{ try{ localStorage.setItem(AI_STORE,JSON.stringify(AI)); }catch{} };
-const aiReady = ()=>!!(AI.on&&AI.key&&AI.model);
+const aiCur = ()=>AI[AI.provider];
+const aiReady = ()=>!!(AI.on&&aiCur().key&&aiCur().model);
+const FU_SCHEMA = {type:'object',properties:{ask:{type:'boolean'},text:{type:'string'}},required:['ask','text'],additionalProperties:false};
+
+// Claude goes through the official SDK, loaded from the CDN the first time it is needed
+let claudeSdk = null;
+async function viaClaude(fn){
+  claudeSdk ||= import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.3.0/+esm').catch(e=>{ claudeSdk=null; throw new Error('Claude の部品を読みこめませんでした。インターネットにつながっているか確かめてください。'); });
+  const sdk=await claudeSdk;
+  try{ return await fn(new sdk.default({apiKey:AI.anthropic.key,dangerouslyAllowBrowser:true,timeout:20000,maxRetries:1})); }
+  catch(e){
+    if(e instanceof sdk.AuthenticationError) throw new Error('APIキーが正しくありません');
+    if(e instanceof sdk.PermissionDeniedError) throw new Error('このキーでは使えません：'+e.message);
+    if(e instanceof sdk.NotFoundError) throw new Error('モデルが見つかりません：'+e.message);
+    if(e instanceof sdk.RateLimitError) throw new Error('混み合っています（429）');
+    if(e instanceof sdk.APIConnectionTimeoutError) throw new Error('時間切れ（20秒）');
+    if(e instanceof sdk.APIConnectionError) throw new Error('Claude につながりませんでした');
+    if(e instanceof sdk.APIError) throw new Error(`エラー ${e.status??''}：${e.message}`);
+    throw e;
+  }
+}
 const chatModel = id=>/^(gpt-|o\d)/.test(id) && !/audio|realtime|transcribe|tts|image|search|embed|moderation|instruct|codex|-\d{4}-\d{2}-\d{2}$/.test(id);
 async function openai(path,body){
   const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),20000);
   try{
     const res=await fetch('https://api.openai.com/v1/'+path,{method:body?'POST':'GET',signal:ctl.signal,
-      headers:{'Authorization':'Bearer '+AI.key,...(body?{'Content-Type':'application/json'}:{})},body:body&&JSON.stringify(body)});
+      headers:{'Authorization':'Bearer '+AI.openai.key,...(body?{'Content-Type':'application/json'}:{})},body:body&&JSON.stringify(body)});
     const j=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(j.error?.message||'HTTP '+res.status);
     return j;
   }catch(e){ throw e.name==='AbortError'?new Error('時間切れ（20秒）'):e; }
   finally{ clearTimeout(t); }
 }
-const askJson = async msgs=>JSON.parse((await openai('chat/completions',{model:AI.model,messages:msgs,response_format:{type:'json_object'}})).choices?.[0]?.message?.content||'{}');
+// each provider: list the models that can answer in JSON, pick a default, and ask once (returning the reply to append for a retry)
+const PROVIDERS = {
+  anthropic:{
+    name:'Claude', label:'Claude（Anthropic）', company:'Anthropic', keyHint:'sk-ant-...',
+    models:()=>viaClaude(async c=>{
+      const ids=[];
+      for await(const m of c.models.list()) if(m.capabilities?.structured_outputs?.supported&&m.capabilities?.effort?.low?.supported) ids.push(m.id);
+      return ids;
+    }),
+    pick:ids=>ids.includes('claude-haiku-5-5')?'claude-haiku-5-5':ids[0],   // fast enough that the child barely waits
+    ask:(system,messages)=>viaClaude(async c=>{
+      const res=await c.messages.create({model:AI.anthropic.model,max_tokens:2048,system,messages,
+        output_config:{effort:'low',format:{type:'json_schema',schema:FU_SCHEMA}}});
+      if(res.stop_reason!=='end_turn') throw new Error(res.stop_reason==='refusal'?'AIが答えるのを断りました':`返事が途中で止まりました（${res.stop_reason}）`);
+      return {out:JSON.parse(res.content.find(b=>b.type==='text')?.text||'{}'), reply:{role:'assistant',content:res.content}};
+    })
+  },
+  openai:{
+    name:'OpenAI', label:'OpenAI', company:'OpenAI', keyHint:'sk-...',
+    models:async()=>{
+      const gptFirst=id=>id.startsWith('gpt-')?0:1;
+      return ((await openai('models')).data||[]).map(m=>m.id).filter(chatModel).sort((a,b)=>gptFirst(a)-gptFirst(b)||b.localeCompare(a,'en',{numeric:true}));
+    },
+    pick:ids=>ids.find(id=>/^gpt-.*-mini$/.test(id))||ids[0],
+    ask:async(system,messages)=>{
+      const j=await openai('chat/completions',{model:AI.openai.model,messages:[{role:'system',content:system},...messages],response_format:{type:'json_object'}});
+      const out=JSON.parse(j.choices?.[0]?.message?.content||'{}');
+      return {out, reply:{role:'assistant',content:JSON.stringify(out)}};
+    }
+  }
+};
 
 // しおりの話し方は natural-japanese スキル（MIT License, coji）の禁止語と読みやすさの原則を、子ども向けの短い問い返しに合わせて絞ったもの
 const fuSystem = grade=>`あなたは、小学生が読書感想文の材料を集めるのを手伝う案内役「しおり」です。
@@ -719,13 +773,13 @@ function njCheck(text){
   return issues;
 }
 async function askFollowup(ctx){
-  const msgs=[{role:'system',content:fuSystem(ctx.book.grade)},{role:'user',content:fuUser(ctx)}];
-  let out=await askJson(msgs), fixed=null;
+  const P=PROVIDERS[AI.provider], system=fuSystem(ctx.book.grade), msgs=[{role:'user',content:fuUser(ctx)}];
+  let {out,reply}=await P.ask(system,msgs), fixed=null;
   let text=String(out.text||'').trim(), issues=out.ask===true?njCheck(text):[];
   if(issues.length){
     fixed=issues;
-    msgs.push({role:'assistant',content:JSON.stringify(out)},{role:'user',content:`次の点を直して、同じ形の JSON でもう一度返してください。\n- ${issues.join('\n- ')}`});
-    out=await askJson(msgs); text=String(out.text||'').trim(); issues=out.ask===true?njCheck(text):[];
+    msgs.push(reply,{role:'user',content:`次の点を直して、同じ形の JSON でもう一度返してください。\n- ${issues.join('\n- ')}`});
+    ({out}=await P.ask(system,msgs)); text=String(out.text||'').trim(); issues=out.ask===true?njCheck(text):[];
   }
   return {ask:out.ask===true&&!!text, text, issues, fixed};
 }
@@ -1419,36 +1473,40 @@ function voiceSettings(){
   </section>`;
 }
 function aiSettings(){
-  const busy=S.aiBusy?'disabled':'';
+  const busy=S.aiBusy?'disabled':'', P=PROVIDERS[AI.provider], cur=aiCur();
   return `<section class="card stack" style="gap:16px" aria-labelledby="aiH">
-    <div><h2 id="aiH" style="font-size:1.25rem">AIの問い返し（OpenAI）</h2>
+    <div><h2 id="aiH" style="font-size:1.25rem">AIの問い返し</h2>
       <p class="hint-text">オンにすると、チャットで子どもの答えが短いときやあいまいなときに、次の質問へ進む前にAIが一度だけ聞き返します。オフのときや、AIにつながらなかったときは、これまでどおり決まった流れで進みます。</p></div>
-    ${privacyNote('オンのあいだは、個人情報のチェックを通った子どもの答えと、本のタイトル・学年が OpenAI に送られます。APIキーはこの端末のブラウザにだけ保存され、記録やCSVには入りません。')}
+    ${privacyNote(`オンのあいだは、個人情報のチェックを通った子どもの答えと、本のタイトル・学年が、選んだAIの会社（いまは ${P.company}）に送られます。APIキーはこの端末のブラウザにだけ保存され、記録やCSVには入りません。`)}
+    <div class="field" role="radiogroup" aria-labelledby="aiProvL">
+      <span class="label" id="aiProvL">使うAI</span>
+      <div class="choices">${Object.entries(PROVIDERS).map(([id,p])=>`<label class="choice"><input type="radio" name="aiProv" value="${id}" ${AI.provider===id?'checked':''} ${busy}><span>${p.label}</span></label>`).join('')}</div>
+    </div>
     <div class="row" style="align-items:flex-end">
-      <div class="field" style="flex:1;min-width:240px"><label class="label" for="aiKey">APIキー</label>
-        <input class="input" id="aiKey" type="password" value="${esc(AI.key)}" placeholder="sk-..." autocomplete="off" spellcheck="false"></div>
+      <div class="field" style="flex:1;min-width:240px"><label class="label" for="aiKey">${P.name} の APIキー</label>
+        <input class="input" id="aiKey" type="password" value="${esc(cur.key)}" placeholder="${P.keyHint}" autocomplete="off" spellcheck="false"></div>
       <button type="button" class="btn btn-soft btn-sm" id="aiConnect" ${busy}>つないでモデルを読みこむ</button>
     </div>
-    ${AI.models.length?`<div class="row" style="align-items:flex-end">
+    ${cur.models.length?`<div class="row" style="align-items:flex-end">
       <div class="field" style="flex:1;min-width:240px"><label class="label" for="aiModel">モデル</label>
-        <select class="input" id="aiModel">${AI.models.map(id=>`<option value="${esc(id)}" ${id===AI.model?'selected':''}>${esc(id)}</option>`).join('')}</select></div>
+        <select class="input" id="aiModel">${cur.models.map(id=>`<option value="${esc(id)}" ${id===cur.model?'selected':''}>${esc(id)}</option>`).join('')}</select></div>
       <button type="button" class="btn btn-soft btn-sm" id="aiTry" ${busy}>ためしに問い返させる</button>
     </div>
     <p class="hint-text">「ためしに問い返させる」は、見本の本と「たのしかった」という答えで1回だけ試します。返事までの秒数も出るので、子どもを待たせないモデルを選んでください。</p>`:''}
-    <label class="check"><input type="checkbox" id="aiOn" ${AI.on?'checked':''} ${AI.key&&AI.model?'':'disabled'}><span>チャットでAIの問い返しを使う</span></label>
+    <label class="check"><input type="checkbox" id="aiOn" ${AI.on?'checked':''} ${cur.key&&cur.model?'':'disabled'}><span>チャットでAIの問い返しを使う</span></label>
     ${S.aiMsg?`<p class="note" role="status" style="white-space:pre-line">${esc(S.aiMsg)}</p>`:''}
   </section>`;
 }
 async function aiConnect(){
-  AI.key=$('#aiKey').value.trim();
-  if(!AI.key){ AI.on=false; saveAi(); aiStatus('APIキーを入れてください。'); return; }
+  const P=PROVIDERS[AI.provider], cur=aiCur();
+  cur.key=$('#aiKey').value.trim();
+  if(!cur.key){ AI.on=false; saveAi(); aiStatus('APIキーを入れてください。'); return; }
   aiStatus('つないでいます…',true);
   try{
-    const gptFirst=id=>id.startsWith('gpt-')?0:1;
-    AI.models=((await openai('models')).data||[]).map(m=>m.id).filter(chatModel).sort((a,b)=>gptFirst(a)-gptFirst(b)||b.localeCompare(a,'en',{numeric:true}));
-    if(!AI.models.includes(AI.model)) AI.model=AI.models.find(id=>/^gpt-.*-mini$/.test(id))||AI.models[0]||'';
-    S.aiMsg=AI.models.length?`つながりました。チャットに使えそうなモデル：${AI.models.length}件`:'つながりましたが、チャットに使えるモデルが見つかりませんでした。';
-  }catch(e){ AI.models=[]; AI.model=''; AI.on=false; S.aiMsg='つながりませんでした：'+e.message; }
+    cur.models=await P.models();
+    if(!cur.models.includes(cur.model)) cur.model=P.pick(cur.models)||'';
+    S.aiMsg=cur.models.length?`${P.name} につながりました。チャットに使えそうなモデル：${cur.models.length}件`:'つながりましたが、チャットに使えるモデルが見つかりませんでした。';
+  }catch(e){ cur.models=[]; cur.model=''; AI.on=false; S.aiMsg='つながりませんでした：'+e.message; }
   saveAi(); aiStatus(S.aiMsg);
 }
 async function aiTry(){
@@ -1456,8 +1514,8 @@ async function aiTry(){
   const t0=Date.now();
   try{
     const r=await askFollowup({book:EXAMPLE_BOOK,answers:[DUMMY[0]],q:1,answer:'たのしかった'});
-    const sec=((Date.now()-t0)/1000).toFixed(1);
-    S.aiMsg=r.ask?`問い返し：「${r.text}」（${sec}秒）`:`この答えには問い返さない、という判断でした（${sec}秒）`;
+    const sec=`${PROVIDERS[AI.provider].name}・${aiCur().model}、${((Date.now()-t0)/1000).toFixed(1)}秒`;
+    S.aiMsg=r.ask?`問い返し：「${r.text}」（${sec}）`:`この答えには問い返さない、という判断でした（${sec}）`;
     if(r.fixed) S.aiMsg+=`\n1回書き直させた点：${r.fixed.join('／')}`;
     if(r.ask&&r.issues.length) S.aiMsg+=`\n書き直しても残った点：${r.issues.join('／')}（本番では、この問い返しは使わずに次の質問へ進みます）`;
   }catch(e){ S.aiMsg='うまくいきませんでした：'+e.message; }
@@ -1513,9 +1571,10 @@ function bindLog(){
   const cv=$('#cfgVoice'); if(cv) cv.onchange=()=>{ CFG.voice=cv.value; saveCfg(); speak('こんにちは。本の案内役の、しおりだよ。',true); };
   const cr=$('#cfgRate'); if(cr) cr.onchange=()=>{ CFG.rate=+cr.value; saveCfg(); speak('こんにちは。本の案内役の、しおりだよ。',true); };
   const ct=$('#cfgTry'); if(ct) ct.onclick=()=>speak('こんにちは。本の案内役の、しおりだよ。この本で、いちばん心にのこった場面はどこ？',true);
-  $('#aiKey').oninput=e=>{ AI.key=e.target.value.trim(); saveAi(); };
+  $$('input[name=aiProv]').forEach(r=>r.onchange=()=>{ AI.provider=r.value; saveAi(); aiStatus(''); });
+  $('#aiKey').oninput=e=>{ aiCur().key=e.target.value.trim(); saveAi(); };
   $('#aiConnect').onclick=aiConnect;
-  const am=$('#aiModel'); if(am) am.onchange=()=>{ AI.model=am.value; saveAi(); };
+  const am=$('#aiModel'); if(am) am.onchange=()=>{ aiCur().model=am.value; saveAi(); };
   const at=$('#aiTry'); if(at) at.onclick=aiTry;
   $('#aiOn').onchange=e=>{ AI.on=e.target.checked; saveAi(); };
   const find=id=>allSessions().find(r=>r.sessionId===id);
