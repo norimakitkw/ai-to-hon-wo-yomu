@@ -734,14 +734,14 @@ async function askFollowup(chat){
   return (await loadFu()).askFollowup(ctx,P.ask);
 }
 async function askServer(ctx){
-  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),20000);
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),15000);   // a child should not wait longer than this
   try{
     const res=await fetch(AI_SERVER+'/followup',{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(ctx)});
     const j=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(j.error||`研究用サーバーのエラー（${res.status}）`);
     return {ask:j.ask===true&&!!j.text, text:String(j.text||''), issues:Array.isArray(j.issues)?j.issues:[], fixed:Array.isArray(j.fixed)?j.fixed:null};
   }catch(e){
-    if(e.name==='AbortError') throw new Error('時間切れ（20秒）');
+    if(e.name==='AbortError') throw new Error('時間切れ（15秒）');
     if(e.name==='TypeError') throw new Error('研究用サーバーにつながりませんでした');   // offline, asleep, or blocked
     throw e;
   }finally{ clearTimeout(t); }
@@ -1084,7 +1084,7 @@ function send(){
   c.log.push({who:'me',text:t,voice}); c.answers[q]=isFu?joinAns(c.answers[q],t):t; c.draft='';
   logEv(isFu?'fu_answer':'answer',{qi:q,text:t,wait,chars:countChars(t),input:takeHow('chat')});
   if(isFu){ c.fu[q]='done'; aiReply(()=>advanceQ(c.answers[q])); }
-  else if(aiReady()) followUp(q,t);
+  else if(aiReady()&&!c.aiOff) followUp(q,t);
   else aiReply(()=>advanceQ(t));
 }
 const joinAns = (a,b)=>a+(/[。！？!?]$/.test(a)?'':'。')+b;
@@ -1093,7 +1093,7 @@ async function followUp(q,answer){
   const c=S.chat; c.busy=true; render();
   let r=null;
   try{ r=await askFollowup({book:S.book,answers:c.answers,q,answer}); }
-  catch(e){ logEv('ai_error',{qi:q,text:String(e.message||e).slice(0,200)}); }
+  catch(e){ c.aiOff=true; logEv('ai_error',{qi:q,text:String(e.message||e).slice(0,200)+'（このチャットでは、この先 AI を使わない）'}); }   // one failure is enough: do not make the child wait again
   if(S.chat!==c) return;   // a new book was started while waiting
   c.busy=false;
   if(r?.fixed) logEv('ai_check',{qi:q,text:r.fixed.join('／')});

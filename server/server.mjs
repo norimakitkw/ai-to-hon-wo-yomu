@@ -3,7 +3,7 @@
 // - 受け取るのは、学年・本の題名・質問と答えだけ。AI への指示文はここで組み立てるので、ほかの用途には使えない。
 // - 子どもの答えはどこにも保存しない。ログに残すのは時刻・結果・かかった時間だけ。
 import http from 'node:http';
-import {readFileSync} from 'node:fs';
+import {readFileSync, statSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
@@ -14,16 +14,23 @@ const ORIGINS = new Set(['https://norimakitkw.github.io', 'http://localhost:4184
 // 1 クラスが同じ学校の回線から一斉に使っても止まらない数。費用の歯止めは 1 日の上限と、Anthropic のコンソールの使用上限
 const LIMIT = {perIpMin: 60, allMin: 120, allDay: 2000};
 // 文字数の上限。日本語は 1 文字 3 バイトなので、中身全体の上限はそれが全部埋まっても収まる大きさにする
-const CAP = {body: 64000, title: 100, status: 20, grade: 20, prev: 6, q: 120, a: 1000};
+const CAP = {body: 64000, title: 100, prev: 6, q: 120, a: 1000};
+// 学年と読みぐあいは、ページの登録画面の選択肢だけを通す（学年は AI への指示文に入るので、自由な文字を入れさせない）
+// index.html で選択肢を足したら、ここにも足す
+const GRADES = new Set(['', '4年生', '5年生', '6年生']), STATUSES = new Set(['', '読み終わった', 'まだ途中']);
 const KEY_FILE = join(homedir(), '.config', 'ai-to-hon-wo-yomu', 'anthropic-key');
 
 function loadKey(){
   if(process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY.trim();
-  try{ return readFileSync(KEY_FILE, 'utf8').trim(); }catch{ return ''; }
+  try{
+    if(statSync(KEY_FILE).mode & 0o077) console.error(`注意：${KEY_FILE} をほかのユーザーも読めます。chmod 600 で自分だけにしてください。`);
+    return readFileSync(KEY_FILE, 'utf8').trim();
+  }catch{ return ''; }
 }
 const apiKey = loadKey();
 if(!apiKey){ console.error(`Anthropic のキーが見つかりません。${KEY_FILE} に入れてください（server/README.md）。`); process.exit(1); }
-const client = new Anthropic({apiKey, timeout: 20000, maxRetries: 1});
+// ページは 15 秒であきらめるので、1 回の呼び出しはそれより短く切る
+const client = new Anthropic({apiKey, timeout: 8000, maxRetries: 1});
 
 async function ask(system, messages){
   const res = await client.messages.create({model: MODEL_SERVER, max_tokens: 2048, system, messages,
@@ -36,7 +43,7 @@ function explain(e){
   if(e instanceof Anthropic.AuthenticationError) return [502, 'サーバーのキーが正しくありません'];
   if(e instanceof Anthropic.PermissionDeniedError) return [502, 'サーバーのキーでは使えません'];
   if(e instanceof Anthropic.RateLimitError) return [503, 'Claude が混み合っています'];
-  if(e instanceof Anthropic.APIConnectionTimeoutError) return [504, '時間切れ（20秒）'];
+  if(e instanceof Anthropic.APIConnectionTimeoutError) return [504, 'サーバーから Claude への呼び出しが時間切れ'];
   if(e instanceof Anthropic.APIConnectionError) return [502, 'サーバーから Claude につながりませんでした'];
   if(e instanceof Anthropic.APIError) return [502, `Claude のエラー（${e.status ?? '?'}）`];
   if(e instanceof SyntaxError) return [502, 'AIの返事を読めませんでした'];
@@ -44,17 +51,23 @@ function explain(e){
 }
 
 // 回数の上限（メモリの中だけ。サーバーを立て直すと数え直し）
+// 同じ回線の上限はすべての呼び出しで数える。全体と 1 日の上限は、中身が正しい呼び出し（＝ Claude を呼ぶもの）だけで数える。
+// こうしないと、中身のない呼び出しを大量に送るだけで、その日の問い返しを止められてしまう
 const hits = new Map();
 let recent = [], day = {date: '', n: 0};
-function overLimit(ip){
+function overIpLimit(ip){
+  const now = Date.now(), mine = (hits.get(ip) || []).filter(t => now - t < 60000);
+  if(mine.length >= LIMIT.perIpMin) return '呼び出しが多すぎます';
+  mine.push(now); hits.set(ip, mine);
+  return '';
+}
+function overTotalLimit(){
   const now = Date.now(), today = new Date().toLocaleDateString('sv-SE', {timeZone: 'Asia/Tokyo'});
   if(day.date !== today) day = {date: today, n: 0};
   if(day.n >= LIMIT.allDay) return '今日の上限に達しました';
   recent = recent.filter(t => now - t < 60000);
   if(recent.length >= LIMIT.allMin) return '混み合っています';
-  const mine = (hits.get(ip) || []).filter(t => now - t < 60000);
-  if(mine.length >= LIMIT.perIpMin) return '呼び出しが多すぎます';
-  mine.push(now); hits.set(ip, mine); recent.push(now); day.n++;
+  recent.push(now); day.n++;
   return '';
 }
 setInterval(() => { const now = Date.now(); for(const [ip, ts] of hits) if(!ts.some(t => now - t < 60000)) hits.delete(ip); }, 60000).unref();
@@ -62,8 +75,9 @@ setInterval(() => { const now = Date.now(); for(const [ip, ts] of hits) if(!ts.s
 // 決まった形・決まった長さの中身だけを通す
 function readCtx(j){
   const str = (v, max) => typeof v === 'string' && [...v].length <= max ? v : null;   // ページと同じく文字（コードポイント）で数える
+  const one = (v, set) => set.has(v ?? '') ? (v ?? '') : null;
   if(!j || typeof j !== 'object' || !Array.isArray(j.prev) || j.prev.length > CAP.prev) return null;
-  const ctx = {title: str(j.title, CAP.title), status: str(j.status ?? '', CAP.status), grade: str(j.grade ?? '', CAP.grade),
+  const ctx = {title: str(j.title, CAP.title), status: one(j.status, STATUSES), grade: one(j.grade, GRADES),
     question: str(j.question, CAP.q), answer: str(j.answer, CAP.a),
     prev: j.prev.map(p => ({q: str(p?.q, CAP.q), a: str(p?.a ?? '', CAP.a)}))};
   if([ctx.title, ctx.status, ctx.grade, ctx.question, ctx.answer].includes(null) || !ctx.answer.trim()) return null;
@@ -79,6 +93,14 @@ function readBody(req){
   });
 }
 const log = (status, what, ms='') => console.log(`${new Date().toISOString()} ${status} ${what}${ms === '' ? '' : ' ' + ms + 'ms'}`);
+// 断った呼び出しは、種類ごとに 1 分に 1 行だけ書く（大量に送られてもログが太らないように）
+const quiet = new Map();
+function logRejected(status, what){
+  const k = status + what, q = quiet.get(k) || {at: 0, n: 0}, now = Date.now();
+  q.n++;
+  if(now - q.at >= 60000){ log(status, q.n > 1 ? `${what} x${q.n}` : what); q.at = now; q.n = 0; }
+  quiet.set(k, q);
+}
 
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin || '';
@@ -88,28 +110,29 @@ const server = http.createServer(async (req, res) => {
 
   if(req.method === 'GET' && path === '/health') return send(200, {ok: true, model: MODEL_SERVER});
   if(path !== '/followup') return send(404, {error: '見つかりません'});
-  if(!ORIGINS.has(origin)){ log(403, 'origin'); return send(403, {error: 'このページからは使えません'}); }
+  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+  const tooMany = overIpLimit(ip);
+  if(tooMany){ logRejected(429, 'ip-limit'); return send(429, {error: tooMany}); }
+  if(!ORIGINS.has(origin)){ logRejected(403, 'origin'); return send(403, {error: 'このページからは使えません'}); }
   if(req.method === 'OPTIONS'){
     res.writeHead(204, {...cors, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600'});
     return res.end();
   }
   if(req.method !== 'POST') return send(405, {error: 'POST だけ受けつけます'});
 
-  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
-  const why = overLimit(ip);
-  if(why){ log(429, 'limit'); return send(429, {error: why}); }
-
   const body = await readBody(req);
-  if(body === null){ log(413, 'too-large'); res.setHeader('Connection', 'close'); res.on('finish', () => req.socket?.destroy()); return send(413, {error: '中身が大きすぎます'}); }
+  if(body === null){ logRejected(413, 'too-large'); res.setHeader('Connection', 'close'); res.on('finish', () => req.socket?.destroy()); return send(413, {error: '中身が大きすぎます'}); }
   let ctx = null;
   try{ ctx = readCtx(JSON.parse(body)); }catch{}
-  if(!ctx){ log(400, 'bad-input'); return send(400, {error: '送られてきた中身の形が違います'}); }
+  if(!ctx){ logRejected(400, 'bad-input'); return send(400, {error: '送られてきた中身の形が違います'}); }
+  const busy = overTotalLimit();
+  if(busy){ logRejected(429, 'total-limit'); return send(429, {error: busy}); }
 
   const t0 = Date.now();
   try{
     const r = await askFollowup(ctx, ask);
     log(200, r.ask ? (r.issues.length ? 'skip' : 'ask') : 'pass', Date.now() - t0);
-    send(200, {ask: r.ask, text: r.text.slice(0, 200), issues: r.issues, fixed: r.fixed});
+    send(200, {ask: r.ask, text: r.ask ? r.text.slice(0, 200) : '', issues: r.issues, fixed: r.fixed});
   }catch(e){
     const [code, msg] = explain(e);
     log(code, e?.constructor?.name || 'Error', Date.now() - t0);

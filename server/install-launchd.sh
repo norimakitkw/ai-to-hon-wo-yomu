@@ -26,7 +26,7 @@ cat > "$PLIST" <<EOF
   <key>StandardErrorPath</key><string>$LOG</string>
 </dict></plist>
 EOF
-launchctl bootout gui/$(id -u)/$LABEL 2>/dev/null || true
+launchctl bootout gui/$(id -u)/$LABEL 2>/dev/null && sleep 1 || true   # 入れ直しのとき、止まりきる前に入れると失敗することがある
 launchctl bootstrap gui/$(id -u) "$PLIST"
 sleep 2
 curl -fsS http://127.0.0.1:8790/health && echo && echo "動いています（ログ：$LOG）"

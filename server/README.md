@@ -12,19 +12,20 @@
 
 - AI への指示文はサーバーの中で組み立てます。送られてくるのは決まった形の短い中身だけなので、ほかの用途の AI としては使えません。
 - 受けつけるのは `https://norimakitkw.github.io` と `http://localhost:4184` のページからの呼び出しだけです。
-- 呼び出せる回数に上限があります。同じ回線から 1 分に 60 回、全体で 1 分に 120 回、1 日に 2000 回までです。
+- 呼び出せる回数に上限があります。同じ回線から 1 分に 60 回、全体で 1 分に 120 回、1 日に 2000 回までです。全体と 1 日の回数は、中身が正しい呼び出しだけで数えます。
+- 学年と読みぐあいは、登録画面の選択肢だけを受けつけます。index.html で選択肢を足したら、`server.mjs` の `GRADES` と `STATUSES` にも足してください。
 - 子どもの答えは保存しません。ログに残すのは、時刻・結果（問い返した／問い返さなかった／失敗）・かかった時間だけです。
 - 費用の最後の歯止めとして、Anthropic のコンソールでこのキーに使用上限を付けてください。
 
 ## 動かし方（mwmwmacbook-pro で）
 
-1. キーを置きます。この用途だけに作ったキーを使ってください。入力した文字は画面に出ません。
+1. キーを置きます。この用途だけに作ったキーを使ってください。入力した文字は画面に出ません（zsh で実行してください）。
 
    ```bash
-   mkdir -p ~/.config/ai-to-hon-wo-yomu && (umask 077; read -rs "k?Anthropic のキー: " && printf '%s' "$k" > ~/.config/ai-to-hon-wo-yomu/anthropic-key); unset k; echo
+   mkdir -p ~/.config/ai-to-hon-wo-yomu && (umask 077; read -rs "k?Anthropic のキー: " && printf '%s' "$k" > ~/.config/ai-to-hon-wo-yomu/anthropic-key); unset k; chmod 600 ~/.config/ai-to-hon-wo-yomu/anthropic-key; echo
    ```
 
-2. 部品を入れて、動くか確かめます。
+2. 部品を入れて、動くか確かめます。`listening on` と出たら、Ctrl-C で止めてから 3 に進んでください（動かしたままだと、3 のサーバーがポートを使えません）。
 
    ```bash
    cd server && npm ci && npm start
@@ -42,4 +43,9 @@
    tailscale funnel --bg 8790
    ```
 
-止めるときは `tailscale funnel --https=443 off` と `launchctl bootout gui/$(id -u)/jp.mwmw.ai-to-hon-wo-yomu` です。
+## 止め方
+
+- インターネットに出すのをやめる：`tailscale funnel reset`
+- サーバーを止める：`launchctl bootout gui/$(id -u)/jp.mwmw.ai-to-hon-wo-yomu`
+- 次にログインしても動かないようにする：上に加えて `rm ~/Library/LaunchAgents/jp.mwmw.ai-to-hon-wo-yomu.plist`
+- ログ：`~/Library/Logs/ai-to-hon-wo-yomu.log`（子どもの答えは入りません）
