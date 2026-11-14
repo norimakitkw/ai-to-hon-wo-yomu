@@ -19,6 +19,13 @@
 
 ## 動かし方（mwmwmacbook-pro で）
 
+mwmwmacbook-pro（Intel・macOS 14、ユーザー mwmw）には、次のように入れてあります。
+
+- コード：`~/AIProjects/ai-to-hon-wo-yomu`（`ai-followup.mjs` と `server/` だけを写したもの。git の作業場所ではありません）
+- Node.js：`~/.local/node`（公式の v26.13.1）。使う前に `export PATH=~/.local/node/bin:$PATH`
+- tailscale コマンド：`/Applications/Tailscale.app/Contents/MacOS/Tailscale`
+- スリープは Amphetamine と `caffeinate` で止めています
+
 1. キーを置きます。この用途だけに作ったキーを使ってください。入力した文字は画面に出ません（zsh で実行してください）。
 
    ```bash
@@ -42,6 +49,14 @@
    ```bash
    tailscale funnel --bg 8790
    ```
+
+## 指示文やサーバーを直したとき
+
+MacBook のサーバーは自動では新しくなりません。直したら、`ai-followup.mjs` と `server/` を MacBook の `~/AIProjects/ai-to-hon-wo-yomu` に写し、次のコマンドで立ち上げ直してください（`package.json` を変えたときは、先に `npm ci`）。
+
+```bash
+launchctl kickstart -k gui/$(id -u)/jp.mwmw.ai-to-hon-wo-yomu
+```
 
 ## 止め方
 
