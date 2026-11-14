@@ -626,7 +626,7 @@ function speak(text,now){
 if(TTS_OK) speechSynthesis.onvoiceschanged=()=>{ if(S.screen==='log'&&!['cfgVoice','aiKey','aiModel'].includes(document.activeElement?.id)) render(); };
 const autoSpeak = text=>{ if(ttsOn&&!ttsMute) speak(text); };
 const ttsToggle = ()=>TTS_OK?`<button type="button" class="btn btn-ghost btn-sm tts" id="ttsToggle" aria-pressed="${ttsOn}">${SPEAK_SVG}<span>よみあげ ${ttsOn?'ON':'OFF'}</span></button>`:'';
-const settingText = ()=>`よみあげ：${ttsOn?'ON':'OFF'}／声：${pickVoice()?.name||'なし'}／速さ：${RATES.find(r=>r[0]===CFG.rate)?.[1]||CFG.rate}／話している間の文字：${CFG.showSpoken?'出す':'出さない'}／AIの問い返し：${aiReady()?`ON（${PROVIDERS[AI.provider].name}・${aiCur().model}）`:'OFF'}`;
+const settingText = ()=>`よみあげ：${ttsOn?'ON':'OFF'}／声：${pickVoice()?.name||'なし'}／速さ：${RATES.find(r=>r[0]===CFG.rate)?.[1]||CFG.rate}／話している間の文字：${CFG.showSpoken?'出す':'出さない'}／AIの問い返し：${aiReady()?`ON（${PROVIDERS[AI.provider].name}・${aiModel()}）`:'OFF'}`;
 function bindVoice(){
   $$('[data-mic]').forEach(btn=>btn.onclick=()=>{
     if(VOICE.btn===btn){ stopVoice(); return; }
@@ -644,18 +644,20 @@ function bindVoice(){
   };
 }
 
-/* ===== AI follow-up (Claude or OpenAI; keys stay in this browser and never go into the log) ===== */
+/* ===== AI follow-up (the research server by default; or Claude / OpenAI with a key kept in this browser — keys never go into the log) ===== */
 const AI_STORE = 'shiori-ai';
-const AI = {provider:'anthropic', on:false, anthropic:{key:'',model:'',models:[]}, openai:{key:'',model:'',models:[]}};
+const AI_SERVER = 'https://mwmwmacbook-pro.tail0f6b5e.ts.net';   // server/ が mwmwmacbook-pro で動き、Tailscale Funnel で公開されている
+const SERVER_MODEL = 'claude-haiku-5-5';   // ai-followup.mjs の MODEL_SERVER と同じ（記録に残すため）
+const AI = {provider:'server', on:true, anthropic:{key:'',model:'',models:[]}, openai:{key:'',model:'',models:[]}};
 try{
   const s=JSON.parse(localStorage.getItem(AI_STORE)||'{}');
   if('key' in s){ s.openai={key:s.key,model:s.model||'',models:s.models||[]}; s.provider='openai'; delete s.key; delete s.model; delete s.models; }   // saved before Claude was added
   Object.assign(AI,s);
 }catch{}
 const saveAi = ()=>{ try{ localStorage.setItem(AI_STORE,JSON.stringify(AI)); }catch{} };
-const aiCur = ()=>AI[AI.provider];
-const aiReady = ()=>!!(AI.on&&aiCur().key&&aiCur().model);
-const FU_SCHEMA = {type:'object',properties:{ask:{type:'boolean'},text:{type:'string'}},required:['ask','text'],additionalProperties:false};
+const aiCur = ()=>AI[AI.provider]||{key:'',model:'',models:[]};   // the server needs no key or model choice
+const aiModel = ()=>PROVIDERS[AI.provider]?.server?SERVER_MODEL:aiCur().model;
+const aiReady = ()=>!!(AI.on&&PROVIDERS[AI.provider]&&(PROVIDERS[AI.provider].server||aiCur().key&&aiCur().model));
 
 // Claude goes through the official SDK, loaded from the CDN the first time it is needed
 let claudeSdk = null;
@@ -686,8 +688,9 @@ async function openai(path,body){
   }catch(e){ throw e.name==='AbortError'?new Error('時間切れ（20秒）'):e; }
   finally{ clearTimeout(t); }
 }
-// each provider: list the models that can answer in JSON, pick a default, and ask once (returning the reply to append for a retry)
+// each key provider: list the models that can answer in JSON, pick a default, and ask once (returning the reply to append for a retry)
 const PROVIDERS = {
+  server:{ name:'研究用サーバー', label:'研究用サーバー（キー不要）', company:'Anthropic', server:true },
   anthropic:{
     name:'Claude', label:'Claude（Anthropic）', company:'Anthropic', keyHint:'sk-ant-...',
     models:()=>viaClaude(async c=>{
@@ -696,9 +699,9 @@ const PROVIDERS = {
       return ids;
     }),
     pick:ids=>ids.includes('claude-haiku-5-5')?'claude-haiku-5-5':ids[0],   // fast enough that the child barely waits
-    ask:(system,messages)=>viaClaude(async c=>{
+    ask:(system,messages,schema)=>viaClaude(async c=>{
       const res=await c.messages.create({model:AI.anthropic.model,max_tokens:2048,system,messages,
-        output_config:{effort:'low',format:{type:'json_schema',schema:FU_SCHEMA}}});
+        output_config:{effort:'low',format:{type:'json_schema',schema}}});
       if(res.stop_reason!=='end_turn') throw new Error(res.stop_reason==='refusal'?'AIが答えるのを断りました':`返事が途中で止まりました（${res.stop_reason}）`);
       return {out:JSON.parse(res.content.find(b=>b.type==='text')?.text||'{}'), reply:{role:'assistant',content:res.content}};
     })
@@ -718,71 +721,30 @@ const PROVIDERS = {
   }
 };
 
-// しおりの話し方は natural-japanese スキル（MIT License, coji）の禁止語と読みやすさの原則を、子ども向けの短い問い返しに合わせて絞ったもの
-const fuSystem = grade=>`あなたは、小学生が読書感想文の材料を集めるのを手伝う案内役「しおり」です。
-子どもは本について6つの質問に順番に答えています。あなたが決めるのは、いまの答えに一度だけ聞き返すかどうかと、聞き返すときの言葉です。
-
-## 聞き返すとき
-- 答えが短く、中身がつかめないとき（例：「たのしかった」「ぜんぶ」「ふつう」だけ）
-- 答えが質問とずれているとき
-
-## 聞き返さないとき
-- 場面・気持ち・理由のどれかが、具体的に書いてあるとき
-- 「ない」「わからない」「思いうかばない」と答えたとき。無理に引き出さない
-- 聞き返すと、家族や友だちなど身の回りのことを、もっとくわしく話させることになるとき
-
-## 聞き返す言葉の決まり
-- 子どもの言葉を短く受け止めてから、問いを一つだけ書く。2文まで、50字くらいまで。
-- 問いは答えの形が決まっていない聞き方にする（「どんな」「どうして」「どこで」など）。答えの候補を出したり、「〜だったんじゃない？」と先回りしたりしない。
-- ほめない。点数をつけない。正しいかどうかを判定しない。
-- 子どもが言っていないことを、言ったことにしない。感想文の文を代わりに書かない。
-- 名前・学校名・住所・電話番号は聞かない。
-- ${grade||'小学4〜6年生'}が読んでわかる言葉で書く。習っていないかもしれない漢字は、ひらがなにする。
-- 一つの文には一つのことだけを書く。打ち消しを重ねない。
-- 「〜だね」「〜かな？」のような話し言葉で書き、最後は「？」で終える。
-- 「〜と言えるね」「〜ではないでしょうか」「大切なのは」「ポイントは」「さて」「それでは」「実は」「ぜひ」「すばらしい」「すてき」のような、決まり文句や大げさな言い方は使わない。
-
-## 返す形
-次の形の JSON だけを返す。
-聞き返すとき：{"ask": true, "text": "聞き返す言葉"}
-聞き返さないとき：{"ask": false, "text": ""}
-
-例
-質問「その場面を読んだとき、どんな気持ちになった？」に「たのしかった」
-→ {"ask": true, "text": "たのしかったんだね。どんなところが、いちばんたのしかった？"}
-質問「この本で、いちばん心にのこった場面はどこ？」に「主人公が一人で暗い図書館に入った場面」
-→ {"ask": false, "text": ""}`;
-const fuUser = ({book,answers,q,answer})=>{
-  const prev=answers.slice(0,q).map((a,i)=>`Q${i+1}「${QUESTIONS[i]}」→「${a}」`).join('\n')||'（まだない）';
-  return `本：『${book.title}』（${book.status||'不明'}）\n学年：${book.grade||'不明'}\nこれまでの答え：\n${prev}\n\nいまの質問：Q${q+1}「${QUESTIONS[q]}」\n子どもの答え：「${answer}」`;
-};
-// 検出は機械、判断はAI：引っかかったら理由を添えて一度だけ書き直させる
-const NJ_RULES = [
-  [/と言え(る|ます)|ではないでしょうか|のではないかな|まとめると/,'結論を押しつける言い回し'],
-  [/非常に|大切なのは|大事なのは|ポイントは|言うまでもな/,'強調のしすぎ'],
-  [/さて|それでは|見ていこう|深掘り|掘り下げ/,'中身のない前置き'],
-  [/実は|驚くべき|興味深い|ぜひ/,'演出の言い回し'],
-  [/すばらしい|素晴らしい|すてき|素敵|えらい|上手|すごいね/,'答えをほめて評価している'],
-  [/じゃない[？?]|でしょ[？?]|だよね[？?]/,'答えを先回りして決めつける問い']
-];
-function njCheck(text){
-  const issues=NJ_RULES.flatMap(([re,why])=>{ const m=text.match(re); return m?[`「${m[0]}」は${why}`]:[]; });
-  const sents=text.split(/(?<=[。！？!?])/).map(s=>s.trim()).filter(Boolean);
-  if(countChars(text)>60) issues.push(`長すぎる（${countChars(text)}字。50字くらいまで）`);
-  if(sents.length>2) issues.push(`文が${sents.length}つある（2つまで）`);
-  if((text.match(/[？?]/g)||[]).length!==1||!/[？?]$/.test(text)) issues.push('問いを一つだけにして、最後を「？」で終える');
-  return issues;
+// 指示文・点検・書き直しは ai-followup.mjs にあり、研究用サーバーも同じファイルを使う（自分のキーで呼ぶときだけ、ここで読みこむ）
+let fuLib = null;
+const loadFu = ()=>fuLib ||= import('./ai-followup.mjs').catch(()=>{ fuLib=null; throw new Error('問い返しの部品を読みこめませんでした'); });
+// the chat context in the shape that both this page and the research server take
+// long answers are cut to the research server's limits (1000 characters each) rather than sent and refused
+const cut = (s,n)=>[...String(s||'')].slice(0,n).join('');
+const fuCtx = ({book,answers,q,answer})=>({title:cut(book.title,100),status:cut(book.status,20),grade:cut(book.grade,20),prev:answers.slice(0,q).map((a,i)=>({q:QUESTIONS[i],a:cut(a,1000)})),question:QUESTIONS[q],answer:cut(answer,1000)});
+async function askFollowup(chat){
+  const P=PROVIDERS[AI.provider], ctx=fuCtx(chat);
+  if(P.server) return askServer(ctx);
+  return (await loadFu()).askFollowup(ctx,P.ask);
 }
-async function askFollowup(ctx){
-  const P=PROVIDERS[AI.provider], system=fuSystem(ctx.book.grade), msgs=[{role:'user',content:fuUser(ctx)}];
-  let {out,reply}=await P.ask(system,msgs), fixed=null;
-  let text=String(out.text||'').trim(), issues=out.ask===true?njCheck(text):[];
-  if(issues.length){
-    fixed=issues;
-    msgs.push(reply,{role:'user',content:`次の点を直して、同じ形の JSON でもう一度返してください。\n- ${issues.join('\n- ')}`});
-    ({out}=await P.ask(system,msgs)); text=String(out.text||'').trim(); issues=out.ask===true?njCheck(text):[];
-  }
-  return {ask:out.ask===true&&!!text, text, issues, fixed};
+async function askServer(ctx){
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),15000);   // a child should not wait longer than this
+  try{
+    const res=await fetch(AI_SERVER+'/followup',{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(ctx)});
+    const j=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(j.error||`研究用サーバーのエラー（${res.status}）`);
+    return {ask:j.ask===true&&!!j.text, text:String(j.text||''), issues:Array.isArray(j.issues)?j.issues:[], fixed:Array.isArray(j.fixed)?j.fixed:null};
+  }catch(e){
+    if(e.name==='AbortError') throw new Error('時間切れ（15秒）');
+    if(e.name==='TypeError') throw new Error('研究用サーバーにつながりませんでした');   // offline, asleep, or blocked
+    throw e;
+  }finally{ clearTimeout(t); }
 }
 
 const GUIDE_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M13 6a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v38l-11-7-11 7z" fill="var(--teal)"/><circle cx="19.5" cy="17" r="2.3" fill="var(--surface)"/><circle cx="28.5" cy="17" r="2.3" fill="var(--surface)"/><path d="M20 23.5q4 3.6 8 0" stroke="var(--surface)" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="16.5" cy="22" r="1.8" fill="var(--accent)" opacity=".8"/><circle cx="31.5" cy="22" r="1.8" fill="var(--accent)" opacity=".8"/></svg>`;
@@ -1122,16 +1084,16 @@ function send(){
   c.log.push({who:'me',text:t,voice}); c.answers[q]=isFu?joinAns(c.answers[q],t):t; c.draft='';
   logEv(isFu?'fu_answer':'answer',{qi:q,text:t,wait,chars:countChars(t),input:takeHow('chat')});
   if(isFu){ c.fu[q]='done'; aiReply(()=>advanceQ(c.answers[q])); }
-  else if(aiReady()) followUp(q,t);
+  else if(aiReady()&&!c.aiOff) followUp(q,t);
   else aiReply(()=>advanceQ(t));
 }
 const joinAns = (a,b)=>a+(/[。！？!?]$/.test(a)?'':'。')+b;
-// asks OpenAI whether to dig into this answer once; on any failure the chat simply moves on as before
+// asks the AI whether to dig into this answer once; on any failure the chat simply moves on as before
 async function followUp(q,answer){
   const c=S.chat; c.busy=true; render();
   let r=null;
   try{ r=await askFollowup({book:S.book,answers:c.answers,q,answer}); }
-  catch(e){ logEv('ai_error',{qi:q,text:String(e.message||e).slice(0,200)}); }
+  catch(e){ c.aiOff=true; logEv('ai_error',{qi:q,text:String(e.message||e).slice(0,200)+'（このチャットでは、この先 AI を使わない）'}); }   // one failure is enough: do not make the child wait again
   if(S.chat!==c) return;   // a new book was started while waiting
   c.busy=false;
   if(r?.fixed) logEv('ai_check',{qi:q,text:r.fixed.join('／')});
@@ -1474,16 +1436,24 @@ function voiceSettings(){
   </section>`;
 }
 function aiSettings(){
-  const busy=S.aiBusy?'disabled':'', P=PROVIDERS[AI.provider], cur=aiCur();
+  const busy=S.aiBusy?'disabled':'', P=PROVIDERS[AI.provider], cur=aiCur(), srv=!!P.server;
+  const tryRow=`<button type="button" class="btn btn-soft btn-sm" id="aiTry" ${busy}>ためしに問い返させる</button>`;
+  const tryHint=`<p class="hint-text">「ためしに問い返させる」は、見本の本と「たのしかった」という答えで1回だけ試します。返事までの秒数も出るので、子どもを待たせないか確かめてください。</p>`;
   return `<section class="card stack" style="gap:16px" aria-labelledby="aiH">
     <div><h2 id="aiH" style="font-size:1.25rem">AIの問い返し</h2>
       <p class="hint-text">オンにすると、チャットで子どもの答えが短いときやあいまいなときに、次の質問へ進む前にAIが一度だけ聞き返します。オフのときや、AIにつながらなかったときは、これまでどおり決まった流れで進みます。</p></div>
-    ${privacyNote(`オンのあいだは、個人情報のチェックを通った子どもの答えと、本のタイトル・学年が、選んだAIの会社（いまは ${P.company}）に送られます。APIキーはこの端末のブラウザにだけ保存され、記録やCSVには入りません。`)}
+    ${privacyNote(srv
+      ?`オンのあいだは、個人情報のチェックを通った子どもの答えと、本のタイトル・学年が、研究用サーバーを通って ${P.company} に送られます。研究用サーバーは答えを保存しません。`
+      :`オンのあいだは、個人情報のチェックを通った子どもの答えと、本のタイトル・学年が、選んだAIの会社（いまは ${P.company}）に送られます。APIキーはこの端末のブラウザにだけ保存され、記録やCSVには入りません。`)}
     <div class="field" role="radiogroup" aria-labelledby="aiProvL">
       <span class="label" id="aiProvL">使うAI</span>
       <div class="choices">${Object.entries(PROVIDERS).map(([id,p])=>`<label class="choice"><input type="radio" name="aiProv" value="${id}" ${AI.provider===id?'checked':''} ${busy}><span>${p.label}</span></label>`).join('')}</div>
     </div>
-    <div class="row" style="align-items:flex-end">
+    ${srv?`<div class="row" style="align-items:flex-end">
+      <p class="hint-text" style="flex:1;min-width:240px">研究用サーバー（${esc(AI_SERVER)}）が、${SERVER_MODEL} で問い返しを作ります。APIキーは要りません。サーバーが止まっているときは、これまでどおり決まった流れで進みます。</p>
+      ${tryRow}
+    </div>${tryHint}`
+    :`<div class="row" style="align-items:flex-end">
       <div class="field" style="flex:1;min-width:240px"><label class="label" for="aiKey">${P.name} の APIキー</label>
         <input class="input" id="aiKey" type="password" value="${esc(cur.key)}" placeholder="${P.keyHint}" autocomplete="off" spellcheck="false"></div>
       <button type="button" class="btn btn-soft btn-sm" id="aiConnect" ${busy}>つないでモデルを読みこむ</button>
@@ -1491,10 +1461,9 @@ function aiSettings(){
     ${cur.models.length?`<div class="row" style="align-items:flex-end">
       <div class="field" style="flex:1;min-width:240px"><label class="label" for="aiModel">モデル</label>
         <select class="input" id="aiModel">${cur.models.map(id=>`<option value="${esc(id)}" ${id===cur.model?'selected':''}>${esc(id)}</option>`).join('')}</select></div>
-      <button type="button" class="btn btn-soft btn-sm" id="aiTry" ${busy}>ためしに問い返させる</button>
-    </div>
-    <p class="hint-text">「ためしに問い返させる」は、見本の本と「たのしかった」という答えで1回だけ試します。返事までの秒数も出るので、子どもを待たせないモデルを選んでください。</p>`:''}
-    <label class="check"><input type="checkbox" id="aiOn" ${AI.on?'checked':''} ${cur.key&&cur.model?'':'disabled'}><span>チャットでAIの問い返しを使う</span></label>
+      ${tryRow}
+    </div>${tryHint}`:''}`}
+    <label class="check"><input type="checkbox" id="aiOn" ${AI.on?'checked':''} ${srv||cur.key&&cur.model?'':'disabled'}><span>チャットでAIの問い返しを使う</span></label>
     ${S.aiMsg?`<p class="note" role="status" style="white-space:pre-line">${esc(S.aiMsg)}</p>`:''}
   </section>`;
 }
@@ -1515,7 +1484,7 @@ async function aiTry(){
   const t0=Date.now();
   try{
     const r=await askFollowup({book:EXAMPLE_BOOK,answers:[DUMMY[0]],q:1,answer:'たのしかった'});
-    const sec=`${PROVIDERS[AI.provider].name}・${aiCur().model}、${((Date.now()-t0)/1000).toFixed(1)}秒`;
+    const sec=`${PROVIDERS[AI.provider].name}・${aiModel()}、${((Date.now()-t0)/1000).toFixed(1)}秒`;
     S.aiMsg=r.ask?`問い返し：「${r.text}」（${sec}）`:`この答えには問い返さない、という判断でした（${sec}）`;
     if(r.fixed) S.aiMsg+=`\n1回書き直させた点：${r.fixed.join('／')}`;
     if(r.ask&&r.issues.length) S.aiMsg+=`\n書き直しても残った点：${r.issues.join('／')}（本番では、この問い返しは使わずに次の質問へ進みます）`;
@@ -1573,8 +1542,8 @@ function bindLog(){
   const cr=$('#cfgRate'); if(cr) cr.onchange=()=>{ CFG.rate=+cr.value; saveCfg(); speak('こんにちは。本の案内役の、しおりだよ。',true); };
   const ct=$('#cfgTry'); if(ct) ct.onclick=()=>speak('こんにちは。本の案内役の、しおりだよ。この本で、いちばん心にのこった場面はどこ？',true);
   $$('input[name=aiProv]').forEach(r=>r.onchange=()=>{ AI.provider=r.value; saveAi(); aiStatus(''); });
-  $('#aiKey').oninput=e=>{ aiCur().key=e.target.value.trim(); saveAi(); };
-  $('#aiConnect').onclick=aiConnect;
+  const ak=$('#aiKey'); if(ak) ak.oninput=e=>{ aiCur().key=e.target.value.trim(); saveAi(); };
+  const ac=$('#aiConnect'); if(ac) ac.onclick=aiConnect;
   const am=$('#aiModel'); if(am) am.onchange=()=>{ aiCur().model=am.value; saveAi(); };
   const at=$('#aiTry'); if(at) at.onclick=aiTry;
   $('#aiOn').onchange=e=>{ AI.on=e.target.checked; saveAi(); };
