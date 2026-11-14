@@ -1,0 +1,12 @@
+{
+  "name": "ai-to-hon-wo-yomu-server",
+  "private": true,
+  "type": "module",
+  "description": "しおりの問い返しだけを作る研究用サーバー（Anthropic のキーをページに置かないため）",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0"
+  }
+}
